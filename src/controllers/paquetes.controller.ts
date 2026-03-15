@@ -9,10 +9,10 @@ interface PaqueteFrontend {
   destino?: string;
   tipo?: string;
   descripcion?: string;
-  precio_base?: number;
-  precio_doble?: number;
-  precio_triple?: number;
-  precio_cuadruple?: number;
+  precio_base?: number | null;
+  precio_doble?: number | null;
+  precio_triple?: number | null;
+  precio_cuadruple?: number | null;
   duracion?: number;
   duracion_dias?: number;
   cupos_totales?: number;
@@ -30,6 +30,8 @@ interface PaqueteFrontend {
   politicas_cancelacion?: string;
   codigo?: string;
   creado_por?: string;
+  fecha_creacion?: string;
+  fecha_actualizacion?: string;
 }
 
 // Función para mapear datos del frontend al schema de la BD
@@ -61,8 +63,19 @@ function mapearPaqueteBD(data: PaqueteFrontend): any {
     paqueteBD.imagen_principal = data.imagen_url || data.imagen_principal;
   }
 
-  // precio_base (BD) - usamos precio_doble como base si no viene precio_base
-  paqueteBD.precio_base = data.precio_base || data.precio_doble || 0;
+  // Precios por tipo de habitación (todos opcionales)
+  if (data.precio_base !== undefined && data.precio_base !== null) {
+    paqueteBD.precio_base = data.precio_base;
+  }
+  if (data.precio_doble !== undefined && data.precio_doble !== null) {
+    paqueteBD.precio_doble = data.precio_doble;
+  }
+  if (data.precio_triple !== undefined && data.precio_triple !== null) {
+    paqueteBD.precio_triple = data.precio_triple;
+  }
+  if (data.precio_cuadruple !== undefined && data.precio_cuadruple !== null) {
+    paqueteBD.precio_cuadruple = data.precio_cuadruple;
+  }
 
   // Campos JSON
   if (data.incluye) {
@@ -96,7 +109,9 @@ function mapearPaqueteFrontend(data: any): PaqueteFrontend {
     duracion: data.duracion_dias,
     duracion_dias: data.duracion_dias,
     precio_base: data.precio_base,
-    precio_doble: data.precio_base,
+    precio_doble: data.precio_doble || data.precio_base,
+    precio_triple: data.precio_triple,
+    precio_cuadruple: data.precio_cuadruple,
     status: data.estado,
     estado: data.estado,
     imagen_url: data.imagen_principal,
