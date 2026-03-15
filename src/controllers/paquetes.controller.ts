@@ -42,7 +42,7 @@ export const getPaqueteById = async (req: Request, res: Response) => {
 export const createPaquete = async (req: Request, res: Response) => {
     const data = req.body;
     
-    console.log('Creating paquete with data:', data);
+    console.log('Creating paquete with data:', JSON.stringify(data, null, 2));
     
     try {
         // Generar código si no viene
@@ -68,6 +68,16 @@ export const createPaquete = async (req: Request, res: Response) => {
         if (data.recursos_vendedores && typeof data.recursos_vendedores === 'string') {
             data.recursos_vendedores = JSON.parse(data.recursos_vendedores);
         }
+        
+        // Limpiar campos vacíos que pueden causar problemas
+        if (!data.fecha_salida) {
+            delete data.fecha_salida;
+        }
+        if (!data.imagen_url) {
+            delete data.imagen_url;
+        }
+
+        console.log('Cleaned data for Supabase:', JSON.stringify(data, null, 2));
 
         const { data: paquete, error } = await supabase
             .from('paquetes')
@@ -78,16 +88,21 @@ export const createPaquete = async (req: Request, res: Response) => {
         if (error) {
             console.error('Supabase error creating package:', error);
             return res.status(400).json({ 
-                error: 'Error al crear paquete', 
+                error: 'Error al crear paquete en base de datos', 
                 details: error.message,
-                code: error.code
+                code: error.code,
+                hint: error.hint || null
             });
         }
         
         res.status(201).json(paquete);
     } catch (error: any) {
         console.error('Error creating package:', error);
-        res.status(500).json({ error: 'Internal server error', details: error.message });
+        res.status(500).json({ 
+            error: 'Internal server error', 
+            details: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
     }
 };
 
