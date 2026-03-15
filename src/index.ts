@@ -28,6 +28,7 @@ import cotizacionesRoutes from './routes/cotizaciones.routes';
 import ventasRoutes from './routes/ventas.routes';
 import documentosRoutes from './routes/documentos.routes';
 import comisionesRoutes from './routes/comisiones.routes';
+import uploadRoutes from './routes/upload.routes';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/paquetes', paquetesRoutes);
@@ -35,6 +36,7 @@ app.use('/api/cotizaciones', cotizacionesRoutes);
 app.use('/api/ventas', ventasRoutes);
 app.use('/api/documentos', documentosRoutes);
 app.use('/api/comisiones', comisionesRoutes);
+app.use('/api/upload', uploadRoutes);
 
 // Health check con verificación de Supabase
 app.get('/api/health', async (req, res) => {
