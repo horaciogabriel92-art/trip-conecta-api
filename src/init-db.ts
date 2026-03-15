@@ -1,15 +1,7 @@
-import db from './config/database';
-import fs from 'fs';
-import path from 'path';
+// Inicialización de la base de datos
+// Con Supabase, esto se maneja a través del SQL Editor
 
-const schemaPath = path.resolve(process.cwd(), '../database/schema.sql');
-const schema = fs.readFileSync(schemaPath, 'utf8');
+import { supabase } from './config/supabase';
 
-try {
-    db.exec(schema);
-    console.log('Database schema created successfully.');
-} catch (error) {
-    console.error('Error creating database schema:', error);
-} finally {
-    db.close();
-}
+console.log('✅ Database initialization not required for Supabase');
+console.log('📋 Run supabase/schema.sql in Supabase SQL Editor first');

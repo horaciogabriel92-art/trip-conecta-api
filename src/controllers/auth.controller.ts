@@ -117,7 +117,7 @@ export const updateProfile = async (req: Request, res: Response) => {
 // Admin: Crear nuevo vendedor
 export const createUser = async (req: Request, res: Response) => {
   try {
-    if (req.user?.role !== 'admin') {
+    if ((req as any).user?.role !== 'admin') {
       return res.status(403).json({ error: 'No autorizado' });
     }
 
@@ -165,7 +165,7 @@ export const createUser = async (req: Request, res: Response) => {
 // Admin: Listar todos los usuarios
 export const getAllUsers = async (req: Request, res: Response) => {
   try {
-    if (req.user?.role !== 'admin') {
+    if ((req as any).user?.role !== 'admin') {
       return res.status(403).json({ error: 'No autorizado' });
     }
 
