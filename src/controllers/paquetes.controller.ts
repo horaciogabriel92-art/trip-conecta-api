@@ -69,13 +69,15 @@ export const createPaquete = async (req: Request, res: Response) => {
             data.recursos_vendedores = JSON.parse(data.recursos_vendedores);
         }
         
-        // Limpiar campos vacíos que pueden causar problemas
+        // Limpiar campos vacíos o que no existen en la tabla
         if (!data.fecha_salida) {
             delete data.fecha_salida;
         }
         if (!data.imagen_url) {
             delete data.imagen_url;
         }
+        // TODO: Remover cuando se agregue la columna duracion a la tabla
+        delete data.duracion;
 
         console.log('Cleaned data for Supabase:', JSON.stringify(data, null, 2));
 
