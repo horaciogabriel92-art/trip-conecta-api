@@ -9,5 +9,7 @@ router.get('/:id', authenticateToken, cotizacionesController.getCotizacionById);
 router.post('/', authenticateToken, cotizacionesController.createCotizacion);
 router.put('/:id', authenticateToken, cotizacionesController.updateCotizacion);
 router.put('/:id/convertir', authenticateToken, cotizacionesController.convertirAVenta);
+router.put('/:id/aprobar', authenticateToken, cotizacionesController.aprobarCotizacion);
+router.put('/:id/rechazar', authenticateToken, cotizacionesController.rechazarCotizacion);
 
 export default router;

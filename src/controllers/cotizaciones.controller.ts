@@ -249,3 +249,74 @@ export const updateCotizacion = async (req: Request, res: Response) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 };
+
+// Nuevos endpoints para admin
+export const aprobarCotizacion = async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { notas_admin } = req.body;
+    const user = (req as any).user;
+    
+    try {
+        // Solo admin puede aprobar
+        if (user.role !== 'admin') {
+            return res.status(403).json({ error: 'Solo administradores pueden aprobar cotizaciones' });
+        }
+
+        const { data: cotizacion, error } = await supabase
+            .from('cotizaciones')
+            .update({
+                estado: 'aprobada',
+                notas_admin: notas_admin || null,
+                fecha_aprobacion: new Date().toISOString()
+            })
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error || !cotizacion) {
+            return res.status(404).json({ error: 'Cotización no encontrada' });
+        }
+
+        res.json({ message: 'Cotización aprobada', cotizacion });
+    } catch (error) {
+        console.error('Error approving quote:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const rechazarCotizacion = async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { notas_admin } = req.body;
+    const user = (req as any).user;
+    
+    try {
+        // Solo admin puede rechazar
+        if (user.role !== 'admin') {
+            return res.status(403).json({ error: 'Solo administradores pueden rechazar cotizaciones' });
+        }
+
+        if (!notas_admin) {
+            return res.status(400).json({ error: 'Debe indicar el motivo del rechazo' });
+        }
+
+        const { data: cotizacion, error } = await supabase
+            .from('cotizaciones')
+            .update({
+                estado: 'cancelada',
+                notas_admin: notas_admin,
+                fecha_rechazo: new Date().toISOString()
+            })
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error || !cotizacion) {
+            return res.status(404).json({ error: 'Cotización no encontrada' });
+        }
+
+        res.json({ message: 'Cotización rechazada', cotizacion });
+    } catch (error) {
+        console.error('Error rejecting quote:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
