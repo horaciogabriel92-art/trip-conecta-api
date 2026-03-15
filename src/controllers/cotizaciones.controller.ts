@@ -142,6 +142,7 @@ export const getCotizacionById = async (req: Request, res: Response) => {
 
 export const convertirAVenta = async (req: Request, res: Response) => {
     const { id } = req.params;
+    const { datos_dato } = req.body;
     const user = (req as any).user;
     
     try {
@@ -185,6 +186,22 @@ export const convertirAVenta = async (req: Request, res: Response) => {
         const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
         const codigo_venta = `VEN-${year}-${random}`;
 
+        // Preparar notas con datos de pago
+        let notasVenta = '';
+        if (datos_dato) {
+            notasVenta += `=== DATOS DE PAGO ===\n`;
+            notasVenta += `Monto Pagado: $${datos_dato.monto_pagado || 'No especificado'}\n`;
+            notasVenta += `Tipo de Pago: ${datos_dato.tipo_pago === 'completo' ? 'Pago Completo' : 'Seña'}\n`;
+            notasVenta += `Medio de Pago: ${datos_dato.medio_pago || 'No especificado'}\n`;
+            if (datos_dato.datos_pasajeros) {
+                notasVenta += `\n=== DATOS DE PASAJEROS ===\n${datos_dato.datos_pasajeros}\n`;
+            }
+            if (datos_dato.observaciones_pago) {
+                notasVenta += `\n=== OBSERVACIONES ===\n${datos_dato.observaciones_pago}\n`;
+            }
+            notasVenta += `\n=== NOTAS ORIGINALES ===\n${cotizacion.notas || ''}`;
+        }
+
         // Crear venta
         const { data: venta, error: ventaError } = await supabase
             .from('ventas')
@@ -202,7 +219,9 @@ export const convertirAVenta = async (req: Request, res: Response) => {
                 precio_total: cotizacion.precio_total,
                 comision_porcentaje: 12,
                 comision_monto: cotizacion.comision_vendedor || (cotizacion.precio_total * 0.12),
-                estado: 'confirmada'
+                estado: 'confirmada',
+                notas: notasVenta || null,
+                metodo_pago: datos_dato?.medio_pago || null
             })
             .select()
             .single();
