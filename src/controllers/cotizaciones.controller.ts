@@ -10,12 +10,16 @@ export const createCotizacion = async (req: Request, res: Response) => {
         tipo_habitacion,
         num_pasajeros,
         fecha_salida,
-        notas
+        precio_total: precio_enviado,
+        notas,
+        datos_completos
     } = req.body;
     const vendedor_id = (req as any).user.userId;
 
+    console.log('Creating cotizacion with data:', req.body);
+
     try {
-        // Obtener paquete para calcular precio
+        // Obtener paquete para verificar
         const { data: paquete, error: paqueteError } = await supabase
             .from('paquetes')
             .select('*')
@@ -26,44 +30,65 @@ export const createCotizacion = async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Paquete no encontrado' });
         }
 
-        // Calcular precio
-        const precio_total = paquete.precio_base * num_pasajeros;
+        // Usar precio enviado desde frontend o calcular
+        const precio_total = precio_enviado || paquete.precio_base * num_pasajeros;
         
         // Generar código único
         const year = new Date().getFullYear();
         const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
         const codigo = `COT-${year}-${random}`;
 
-        // Calcular fecha de expiración (48 horas)
+        // Calcular fecha de expiración (7 días)
         const fecha_expiracion = new Date();
-        fecha_expiracion.setHours(fecha_expiracion.getHours() + 48);
+        fecha_expiracion.setDate(fecha_expiracion.getDate() + 7);
+
+        // Preparar notas extendidas con datos completos
+        let notasExtendidas = notas || '';
+        if (datos_completos) {
+            notasExtendidas += '\n\n--- DATOS COMPLETOS ---\n' + JSON.stringify(datos_completos, null, 2);
+        }
+
+        const insertData: any = {
+            codigo,
+            vendedor_id,
+            paquete_id,
+            cliente_nombre,
+            cliente_email,
+            cliente_telefono,
+            tipo_habitacion,
+            num_pasajeros,
+            fecha_salida: fecha_salida || null,
+            precio_total,
+            comision_vendedor: precio_total * 0.12, // 12% comisión
+            notas: notasExtendidas,
+            fecha_expiracion: fecha_expiracion.toISOString(),
+            estado: 'pendiente'
+        };
+
+        console.log('Inserting cotizacion:', insertData);
 
         const { data: cotizacion, error } = await supabase
             .from('cotizaciones')
-            .insert({
-                codigo,
-                vendedor_id,
-                paquete_id,
-                cliente_nombre,
-                cliente_email,
-                cliente_telefono,
-                tipo_habitacion,
-                num_pasajeros,
-                fecha_salida,
-                precio_total,
-                comision_vendedor: precio_total * 0.12, // 12% comisión
-                notas,
-                fecha_expiracion: fecha_expiracion.toISOString()
-            })
+            .insert(insertData)
             .select()
             .single();
 
-        if (error) throw error;
+        if (error) {
+            console.error('Supabase error:', error);
+            return res.status(400).json({ 
+                error: 'Error al crear cotización', 
+                details: error.message,
+                code: error.code 
+            });
+        }
 
         res.status(201).json(cotizacion);
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error creating quote:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ 
+            error: 'Internal server error',
+            details: error.message 
+        });
     }
 };
 
