@@ -72,7 +72,7 @@ export const login = async (req: Request, res: Response) => {
 
 export const getProfile = async (req: Request, res: Response) => {
   try {
-    const userId = req.user?.userId;
+    const userId = (req as any).user?.userId;
     
     const { data: user, error } = await supabase
       .from('users')
@@ -93,7 +93,7 @@ export const getProfile = async (req: Request, res: Response) => {
 
 export const updateProfile = async (req: Request, res: Response) => {
   try {
-    const userId = req.user?.userId;
+    const userId = (req as any).user?.userId;
     const { nombre, apellido, telefono } = req.body;
 
     const { data, error } = await supabase
