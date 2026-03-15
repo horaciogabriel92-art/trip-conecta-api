@@ -5,6 +5,9 @@ import { authenticateToken } from '../middleware/auth';
 const router = Router();
 
 router.get('/', authenticateToken, cotizacionesController.getCotizaciones);
+router.get('/:id', authenticateToken, cotizacionesController.getCotizacionById);
 router.post('/', authenticateToken, cotizacionesController.createCotizacion);
+router.put('/:id', authenticateToken, cotizacionesController.updateCotizacion);
+router.put('/:id/convertir', authenticateToken, cotizacionesController.convertirAVenta);
 
 export default router;

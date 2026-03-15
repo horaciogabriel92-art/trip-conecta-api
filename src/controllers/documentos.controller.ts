@@ -1,43 +1,118 @@
 import { Request, Response } from 'express';
-import db from '../config/database';
-import path from 'path';
+import { supabase } from '../config/supabase';
 
-export const uploadDocumento = (req: Request, res: Response) => {
-    const { venta_id, tipo, titulo, descripcion } = req.body;
+export const uploadDocumento = async (req: Request, res: Response) => {
+    const { venta_id, tipo, descripcion } = req.body;
     const file = req.file;
-    const admin_id = (req as any).user.id;
+    const user = (req as any).user;
 
     if (!file) {
         return res.status(400).json({ error: 'No se subió ningún archivo' });
     }
 
     try {
-        const result = db.prepare(`
-            INSERT INTO documentos_viaje (
-                venta_id, tipo, titulo, descripcion,
-                archivo_url, archivo_nombre_original, archivo_tipo, archivo_size,
-                subido_por_admin_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-            venta_id, tipo, titulo, descripcion,
-            file.path, file.originalname, file.mimetype, file.size,
-            admin_id
-        );
+        // Verificar que la venta existe y el vendedor tiene acceso
+        const { data: venta, error: ventaError } = await supabase
+            .from('ventas')
+            .select('vendedor_id')
+            .eq('id', venta_id)
+            .single();
 
-        res.status(201).json({ id: result.lastInsertRowid, message: 'Documento subido correctamente' });
+        if (ventaError || !venta) {
+            return res.status(404).json({ error: 'Venta no encontrada' });
+        }
+
+        // Solo admin o el vendedor de la venta pueden subir documentos
+        if (user.role !== 'admin' && venta.vendedor_id !== user.userId) {
+            return res.status(403).json({ error: 'No autorizado' });
+        }
+
+        // Guardar referencia del archivo
+        // Nota: En producción, los archivos deberían ir a S3 o Supabase Storage
+        const ruta_archivo = file.path || `/storage/uploads/${file.filename}`;
+
+        const { data: documento, error } = await supabase
+            .from('documentos_viaje')
+            .insert({
+                venta_id,
+                tipo,
+                nombre_archivo: file.originalname,
+                ruta_archivo: ruta_archivo,
+                descripcion,
+                subido_por: user.userId
+            })
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        res.status(201).json({ 
+            message: 'Documento subido correctamente',
+            documento 
+        });
     } catch (error) {
         console.error('Error uploading document:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
 
-export const getDocumentosByVenta = (req: Request, res: Response) => {
+export const getDocumentosByVenta = async (req: Request, res: Response) => {
     const { ventaId } = req.params;
+    const user = (req as any).user;
+    
     try {
-        const documentos = db.prepare('SELECT * FROM documentos_viaje WHERE venta_id = ?').all(ventaId);
+        // Verificar acceso a la venta
+        const { data: venta, error: ventaError } = await supabase
+            .from('ventas')
+            .select('vendedor_id')
+            .eq('id', ventaId)
+            .single();
+
+        if (ventaError || !venta) {
+            return res.status(404).json({ error: 'Venta no encontrada' });
+        }
+
+        if (user.role !== 'admin' && venta.vendedor_id !== user.userId) {
+            return res.status(403).json({ error: 'No autorizado' });
+        }
+
+        const { data: documentos, error } = await supabase
+            .from('documentos_viaje')
+            .select(`
+                *,
+                subido_por:subido_por (nombre, apellido)
+            `)
+            .eq('venta_id', ventaId)
+            .order('fecha_subida', { ascending: false });
+
+        if (error) throw error;
         res.json(documentos);
     } catch (error) {
         console.error('Error fetching documents:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const deleteDocumento = async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const user = (req as any).user;
+    
+    try {
+        // Solo admin puede eliminar
+        if (user.role !== 'admin') {
+            return res.status(403).json({ error: 'No autorizado' });
+        }
+
+        const { error } = await supabase
+            .from('documentos_viaje')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+
+        res.json({ message: 'Documento eliminado correctamente' });
+    } catch (error) {
+        console.error('Error deleting document:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

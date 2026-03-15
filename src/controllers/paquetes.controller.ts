@@ -1,9 +1,15 @@
 import { Request, Response } from 'express';
-import db from '../config/database';
+import { supabase } from '../config/supabase';
 
-export const getAllPaquetes = (req: Request, res: Response) => {
+export const getAllPaquetes = async (req: Request, res: Response) => {
     try {
-        const paquetes = db.prepare('SELECT * FROM paquetes WHERE status != "eliminado"').all();
+        const { data: paquetes, error } = await supabase
+            .from('paquetes')
+            .select('*')
+            .neq('estado', 'eliminado')
+            .order('fecha_creacion', { ascending: false });
+
+        if (error) throw error;
         res.json(paquetes);
     } catch (error) {
         console.error('Error fetching packages:', error);
@@ -11,11 +17,16 @@ export const getAllPaquetes = (req: Request, res: Response) => {
     }
 };
 
-export const getPaqueteById = (req: Request, res: Response) => {
+export const getPaqueteById = async (req: Request, res: Response) => {
     const { id } = req.params;
     try {
-        const paquete = db.prepare('SELECT * FROM paquetes WHERE id = ?').get(id);
-        if (!paquete) {
+        const { data: paquete, error } = await supabase
+            .from('paquetes')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (error || !paquete) {
             return res.status(404).json({ error: 'Paquete no encontrado' });
         }
         res.json(paquete);
@@ -25,48 +36,64 @@ export const getPaqueteById = (req: Request, res: Response) => {
     }
 };
 
-export const createPaquete = (req: Request, res: Response) => {
+export const createPaquete = async (req: Request, res: Response) => {
     const data = req.body;
     try {
-        const columns = Object.keys(data).join(', ');
-        const placeholders = Object.keys(data).map(() => '?').join(', ');
-        const values = Object.values(data);
+        // Generar código si no viene
+        if (!data.codigo) {
+            const year = new Date().getFullYear();
+            const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+            data.codigo = `PKG-${year}-${random}`;
+        }
 
-        const result = db.prepare(`INSERT INTO paquetes (${columns}) VALUES (${placeholders})`).run(...values);
-        res.status(201).json({ id: result.lastInsertRowid, ...data });
+        const { data: paquete, error } = await supabase
+            .from('paquetes')
+            .insert(data)
+            .select()
+            .single();
+
+        if (error) throw error;
+        res.status(201).json(paquete);
     } catch (error) {
         console.error('Error creating package:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
 
-export const updatePaquete = (req: Request, res: Response) => {
+export const updatePaquete = async (req: Request, res: Response) => {
     const { id } = req.params;
     const data = req.body;
     try {
-        const setClause = Object.keys(data).map(key => `${key} = ?`).join(', ');
-        const values = [...Object.values(data), id];
+        const { data: paquete, error } = await supabase
+            .from('paquetes')
+            .update(data)
+            .eq('id', id)
+            .select()
+            .single();
 
-        const result = db.prepare(`UPDATE paquetes SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(...values);
-        
-        if (result.changes === 0) {
+        if (error || !paquete) {
             return res.status(404).json({ error: 'Paquete no encontrado' });
         }
         
-        res.json({ message: 'Paquete actualizado correctamente' });
+        res.json({ message: 'Paquete actualizado correctamente', paquete });
     } catch (error) {
         console.error('Error updating package:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
 
-export const deletePaquete = (req: Request, res: Response) => {
+export const deletePaquete = async (req: Request, res: Response) => {
     const { id } = req.params;
     try {
         // Soft delete
-        const result = db.prepare('UPDATE paquetes SET status = "eliminado", updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(id);
-        
-        if (result.changes === 0) {
+        const { data: paquete, error } = await supabase
+            .from('paquetes')
+            .update({ estado: 'eliminado' })
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error || !paquete) {
             return res.status(404).json({ error: 'Paquete no encontrado' });
         }
         
