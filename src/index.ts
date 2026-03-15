@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import pino from 'pino';
 import pinoPretty from 'pino-pretty';
 import { supabase } from './config/supabase';
+import { apiLimiter } from './middleware/rateLimiter';
 
 dotenv.config();
 
@@ -11,8 +12,14 @@ const logger = pino(pinoPretty());
 const app = express();
 const port = process.env.PORT || 3001;
 
+// Trust proxy (necesario para rate limiting detrás de Traefik/nginx)
+app.set('trust proxy', 1);
+
 app.use(cors());
 app.use(express.json());
+
+// Rate limiting general para toda la API
+app.use('/api/', apiLimiter);
 
 // Rutas
 import authRoutes from './routes/auth.routes';
