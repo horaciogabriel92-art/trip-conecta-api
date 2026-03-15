@@ -62,6 +62,9 @@ export const createPaquete = async (req: Request, res: Response) => {
         if (data.itinerario && typeof data.itinerario === 'string') {
             data.itinerario = JSON.parse(data.itinerario);
         }
+        if (data.galeria && typeof data.galeria === 'string') {
+            data.galeria = JSON.parse(data.galeria);
+        }
         if (data.recursos_vendedores && typeof data.recursos_vendedores === 'string') {
             data.recursos_vendedores = JSON.parse(data.recursos_vendedores);
         }
