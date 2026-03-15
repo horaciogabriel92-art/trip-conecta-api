@@ -161,17 +161,29 @@ export const convertirAVenta = async (req: Request, res: Response) => {
             return res.status(403).json({ error: 'No autorizado' });
         }
 
+        // Verificar que haya cupos disponibles
+        const { data: paquete, error: paqueteError } = await supabase
+            .from('paquetes')
+            .select('titulo, cupos_disponibles, cupos_totales')
+            .eq('id', cotizacion.paquete_id)
+            .single();
+
+        if (paqueteError || !paquete) {
+            return res.status(404).json({ error: 'Paquete no encontrado' });
+        }
+
+        if ((paquete.cupos_disponibles || 0) < cotizacion.num_pasajeros) {
+            return res.status(400).json({ 
+                error: 'No hay cupos disponibles', 
+                disponibles: paquete.cupos_disponibles,
+                solicitados: cotizacion.num_pasajeros
+            });
+        }
+
         // Generar código de venta
         const year = new Date().getFullYear();
         const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
         const codigo_venta = `VEN-${year}-${random}`;
-
-        // Obtener info del paquete
-        const { data: paquete } = await supabase
-            .from('paquetes')
-            .select('titulo')
-            .eq('id', cotizacion.paquete_id)
-            .single();
 
         // Crear venta
         const { data: venta, error: ventaError } = await supabase
@@ -206,10 +218,21 @@ export const convertirAVenta = async (req: Request, res: Response) => {
             })
             .eq('id', id);
 
-        res.status(201).json({ message: 'Cotización convertida a venta', venta });
-    } catch (error) {
+        // RESTAR CUPOS DISPONIBLES
+        const nuevosCupos = (paquete.cupos_disponibles || 0) - cotizacion.num_pasajeros;
+        await supabase
+            .from('paquetes')
+            .update({ cupos_disponibles: nuevosCupos })
+            .eq('id', cotizacion.paquete_id);
+
+        res.status(201).json({ 
+            message: 'Cotización convertida a venta', 
+            venta,
+            cupos_restantes: nuevosCupos
+        });
+    } catch (error: any) {
         console.error('Error converting quote:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ error: 'Internal server error', details: error.message });
     }
 };
 
