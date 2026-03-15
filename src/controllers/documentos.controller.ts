@@ -156,15 +156,39 @@ export const downloadDocumento = async (req: Request, res: Response) => {
         // Si es archivo local
         const fs = require('fs');
         const path = require('path');
-        const filePath = path.join(process.cwd(), documento.ruta_archivo);
+        
+        // Intentar varias rutas posibles
+        let filePath = documento.ruta_archivo;
+        if (!fs.existsSync(filePath)) {
+            filePath = path.join(process.cwd(), documento.ruta_archivo);
+        }
+        if (!fs.existsSync(filePath)) {
+            filePath = path.join(process.cwd(), 'storage', 'uploads', path.basename(documento.ruta_archivo));
+        }
         
         if (!fs.existsSync(filePath)) {
-            return res.status(404).json({ error: 'Archivo no encontrado' });
+            console.error('Archivo no encontrado en:', filePath);
+            return res.status(404).json({ error: 'Archivo no encontrado en servidor' });
         }
 
+        // Determinar content type
+        const ext = path.extname(documento.nombre_archivo).toLowerCase();
+        const contentType = 
+            ext === '.pdf' ? 'application/pdf' :
+            ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' :
+            ext === '.png' ? 'image/png' :
+            'application/octet-stream';
+
         res.setHeader('Content-Disposition', `attachment; filename="${documento.nombre_archivo}"`);
-        res.setHeader('Content-Type', 'application/pdf');
-        fs.createReadStream(filePath).pipe(res);
+        res.setHeader('Content-Type', contentType);
+        
+        const fileStream = fs.createReadStream(filePath);
+        fileStream.pipe(res);
+        
+        fileStream.on('error', (err: any) => {
+            console.error('Error leyendo archivo:', err);
+            res.status(500).json({ error: 'Error leyendo archivo' });
+        });
     } catch (error) {
         console.error('Error downloading document:', error);
         res.status(500).json({ error: 'Internal server error' });
