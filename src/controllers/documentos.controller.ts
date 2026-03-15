@@ -116,3 +116,57 @@ export const deleteDocumento = async (req: Request, res: Response) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 };
+
+export const downloadDocumento = async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const user = (req as any).user;
+    
+    try {
+        // Obtener documento
+        const { data: documento, error: docError } = await supabase
+            .from('documentos_viaje')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (docError || !documento) {
+            return res.status(404).json({ error: 'Documento no encontrado' });
+        }
+
+        // Verificar acceso a la venta
+        const { data: venta, error: ventaError } = await supabase
+            .from('ventas')
+            .select('vendedor_id')
+            .eq('id', documento.venta_id)
+            .single();
+
+        if (ventaError || !venta) {
+            return res.status(404).json({ error: 'Venta no encontrada' });
+        }
+
+        if (user.role !== 'admin' && venta.vendedor_id !== user.userId) {
+            return res.status(403).json({ error: 'No autorizado' });
+        }
+
+        // Si está en Supabase Storage
+        if (documento.ruta_archivo.startsWith('http')) {
+            return res.redirect(documento.ruta_archivo);
+        }
+
+        // Si es archivo local
+        const fs = require('fs');
+        const path = require('path');
+        const filePath = path.join(process.cwd(), documento.ruta_archivo);
+        
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ error: 'Archivo no encontrado' });
+        }
+
+        res.setHeader('Content-Disposition', `attachment; filename="${documento.nombre_archivo}"`);
+        res.setHeader('Content-Type', 'application/pdf');
+        fs.createReadStream(filePath).pipe(res);
+    } catch (error) {
+        console.error('Error downloading document:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};

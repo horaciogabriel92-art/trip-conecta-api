@@ -6,7 +6,8 @@ import { upload } from '../middleware/upload';
 const router = Router();
 
 router.get('/venta/:ventaId', authenticateToken, documentosController.getDocumentosByVenta);
-router.post('/', authenticateToken, upload.single('archivo'), documentosController.uploadDocumento);
+router.get('/:id/download', authenticateToken, documentosController.downloadDocumento);
+router.post('/', authenticateToken, upload.single('documento'), documentosController.uploadDocumento);
 router.delete('/:id', authenticateToken, authorizeRole(['admin']), documentosController.deleteDocumento);
 
 export default router;
