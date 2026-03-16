@@ -142,11 +142,18 @@ export const getCotizacionById = async (req: Request, res: Response) => {
 
 export const convertirAVenta = async (req: Request, res: Response) => {
     const { id } = req.params;
-    const { datos_dato } = req.body;
+    const { 
+        pago_realizado, 
+        monto_pagado, 
+        tipo_pago, 
+        medio_pago, 
+        observaciones_pago,
+        datos_pasajeros 
+    } = req.body;
     const user = (req as any).user;
     
     try {
-        // Obtener cotización
+        // Obtener cotización con sus comprobantes
         const { data: cotizacion, error: cotError } = await supabase
             .from('cotizaciones')
             .select('*')
@@ -181,28 +188,59 @@ export const convertirAVenta = async (req: Request, res: Response) => {
             });
         }
 
+        // Obtener comprobantes de pago asociados
+        const { data: comprobantes } = await supabase
+            .from('comprobantes_pago')
+            .select('*')
+            .eq('cotizacion_id', id);
+
         // Generar código de venta
         const year = new Date().getFullYear();
         const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
         const codigo_venta = `VEN-${year}-${random}`;
 
-        // Preparar notas con datos de pago
+        // Preparar notas de venta con datos de pago
         let notasVenta = '';
-        if (datos_dato) {
-            notasVenta += `=== DATOS DE PAGO ===\n`;
-            notasVenta += `Monto Pagado: $${datos_dato.monto_pagado || 'No especificado'}\n`;
-            notasVenta += `Tipo de Pago: ${datos_dato.tipo_pago === 'completo' ? 'Pago Completo' : 'Seña'}\n`;
-            notasVenta += `Medio de Pago: ${datos_dato.medio_pago || 'No especificado'}\n`;
-            if (datos_dato.datos_pasajeros) {
-                notasVenta += `\n=== DATOS DE PASAJEROS ===\n${datos_dato.datos_pasajeros}\n`;
+        
+        // Sección de pago
+        notasVenta += `=== INFORMACIÓN DE PAGO ===\n`;
+        notasVenta += `Pago Realizado: ${pago_realizado ? 'SÍ' : 'NO'}\n`;
+        
+        if (pago_realizado) {
+            notasVenta += `Monto Pagado: $${monto_pagado || 0}\n`;
+            notasVenta += `Tipo de Pago: ${tipo_pago === 'total' ? 'Pago Total' : 'Adelanto/Seña'}\n`;
+            notasVenta += `Medio de Pago: ${medio_pago || 'No especificado'}\n`;
+            notasVenta += `Fecha de Pago: ${new Date().toLocaleDateString('es-AR')}\n`;
+            
+            if (observaciones_pago) {
+                notasVenta += `\nObservaciones del Pago:\n${observaciones_pago}\n`;
             }
-            if (datos_dato.observaciones_pago) {
-                notasVenta += `\n=== OBSERVACIONES ===\n${datos_dato.observaciones_pago}\n`;
+        } else {
+            notasVenta += `Estado: Pago pendiente - el cliente aún no ha realizado ningún pago\n`;
+            if (observaciones_pago) {
+                notasVenta += `\nNotas sobre pago pendiente:\n${observaciones_pago}\n`;
             }
-            notasVenta += `\n=== NOTAS ORIGINALES ===\n${cotizacion.notas || ''}`;
+        }
+        
+        // Comprobantes adjuntos
+        if (comprobantes && comprobantes.length > 0) {
+            notasVenta += `\n=== COMPROBANTES ADJUNTOS ===\n`;
+            comprobantes.forEach((c: any, idx: number) => {
+                notasVenta += `${idx + 1}. ${c.nombre_archivo} (${c.tipo_archivo})\n`;
+            });
         }
 
-        // Crear venta
+        // Datos de pasajeros
+        if (datos_pasajeros) {
+            notasVenta += `\n=== DATOS DE PASAJEROS ===\n${datos_pasajeros}\n`;
+        }
+
+        // Notas originales
+        if (cotizacion.notas) {
+            notasVenta += `\n=== NOTAS ORIGINALES DE COTIZACIÓN ===\n${cotizacion.notas}`;
+        }
+
+        // Crear venta con datos heredados
         const { data: venta, error: ventaError } = await supabase
             .from('ventas')
             .insert({
@@ -221,19 +259,33 @@ export const convertirAVenta = async (req: Request, res: Response) => {
                 comision_monto: cotizacion.comision_vendedor || (cotizacion.precio_total * 0.12),
                 estado: 'confirmada',
                 notas: notasVenta || null,
-                metodo_pago: datos_dato?.medio_pago || null
+                metodo_pago: medio_pago || null,
+                // Campos heredados de pago
+                pago_heredado: pago_realizado || false,
+                monto_pagado_heredado: pago_realizado ? (monto_pagado || 0) : 0,
+                tipo_pago_heredado: tipo_pago || 'pendiente',
+                observaciones_pago_heredado: observaciones_pago || null,
+                comprobantes_pago_urls: comprobantes && comprobantes.length > 0 
+                    ? JSON.stringify(comprobantes.map((c: any) => `/uploads/comprobantes/${c.ruta_archivo}`))
+                    : null
             })
             .select()
             .single();
 
         if (ventaError) throw ventaError;
 
-        // Actualizar cotización
+        // Actualizar cotización con datos de pago
         await supabase
             .from('cotizaciones')
             .update({ 
                 estado: 'convertida',
-                fecha_conversion: new Date().toISOString()
+                fecha_conversion: new Date().toISOString(),
+                pago_realizado: pago_realizado || false,
+                monto_pagado: pago_realizado ? monto_pagado : null,
+                tipo_pago: tipo_pago || 'pendiente',
+                medio_pago: medio_pago || null,
+                observaciones_pago: observaciones_pago || null,
+                fecha_pago: pago_realizado ? new Date().toISOString() : null
             })
             .eq('id', id);
 
@@ -245,9 +297,10 @@ export const convertirAVenta = async (req: Request, res: Response) => {
             .eq('id', cotizacion.paquete_id);
 
         res.status(201).json({ 
-            message: 'Cotización convertida a venta', 
+            message: 'Cotización convertida a venta exitosamente', 
             venta,
-            cupos_restantes: nuevosCupos
+            cupos_restantes: nuevosCupos,
+            comprobantes_count: comprobantes?.length || 0
         });
     } catch (error: any) {
         console.error('Error converting quote:', error);
