@@ -6,6 +6,7 @@ import path from 'path';
 import fs from 'fs';
 
 const router = Router();
+console.log('[UPLOAD ROUTES] Loading upload routes...');
 
 // Configurar multer para memoria (imágenes de paquetes a Supabase)
 const upload = multer({ 
@@ -364,4 +365,5 @@ router.delete('/comprobante-pago/:id', authenticateToken, async (req, res) => {
   }
 });
 
+console.log('[UPLOAD ROUTES] Upload routes loaded successfully');
 export default router;
