@@ -24,8 +24,14 @@ const upload = multer({
 // Subir imagen a Supabase Storage
 router.post('/paquete-imagen', authenticateToken, upload.single('imagen'), async (req, res) => {
   try {
+    console.log('Upload request received:', {
+      headers: req.headers['content-type'],
+      file: req.file,
+      body: req.body
+    });
+    
     if (!req.file) {
-      return res.status(400).json({ error: 'No se proporcionó ninguna imagen' });
+      return res.status(400).json({ error: 'No se proporcionó ninguna imagen', debug: { contentType: req.headers['content-type'] } });
     }
 
     const file = req.file;
