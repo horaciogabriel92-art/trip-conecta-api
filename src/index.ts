@@ -16,7 +16,8 @@ const port = process.env.PORT || 3001;
 app.set('trust proxy', 1);
 
 app.use(cors());
-app.use(express.json());
+// NO aplicar express.json() globalmente - se aplica por ruta
+// app.use(express.json());
 
 // Rate limiting general para toda la API
 app.use('/api/', apiLimiter);
@@ -30,13 +31,13 @@ import documentosRoutes from './routes/documentos.routes';
 import comisionesRoutes from './routes/comisiones.routes';
 import uploadRoutes from './routes/upload.routes';
 
-app.use('/api/auth', authRoutes);
-app.use('/api/paquetes', paquetesRoutes);
-app.use('/api/cotizaciones', cotizacionesRoutes);
-app.use('/api/ventas', ventasRoutes);
-app.use('/api/documentos', documentosRoutes);
-app.use('/api/comisiones', comisionesRoutes);
-app.use('/api/upload', uploadRoutes);
+app.use('/api/auth', express.json(), authRoutes);
+app.use('/api/paquetes', express.json(), paquetesRoutes);
+app.use('/api/cotizaciones', express.json(), cotizacionesRoutes);
+app.use('/api/ventas', express.json(), ventasRoutes);
+app.use('/api/documentos', express.json(), documentosRoutes);
+app.use('/api/comisiones', express.json(), comisionesRoutes);
+app.use('/api/upload', uploadRoutes); // Sin express.json() - usa multipart
 
 // Health check con verificación de Supabase
 app.get('/api/health', async (req, res) => {
