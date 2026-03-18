@@ -40,7 +40,8 @@ RUN npm ci --only=production && npm cache clean --force
 COPY --from=builder /app/dist ./dist
 
 # Copy templates (needed for Pug)
-COPY --from=builder /app/src/templates ./src/templates
+# Los templates deben estar accesibles desde el código compilado en dist/
+COPY --from=builder /app/src/templates ./dist/templates
 
 # Create directories for storage
 RUN mkdir -p database storage/uploads storage/cotizaciones-pdfs
