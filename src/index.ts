@@ -24,6 +24,10 @@ app.use(cors());
 const storagePath = process.env.STORAGE_PATH || './storage/uploads';
 app.use('/uploads', express.static(storagePath));
 
+// Servir PDFs de cotizaciones
+const pdfStoragePath = process.env.PDF_STORAGE_PATH || './storage/cotizaciones-pdfs';
+app.use('/uploads/cotizaciones', express.static(pdfStoragePath));
+
 // Rate limiting general para toda la API
 app.use('/api/', apiLimiter);
 
@@ -35,6 +39,7 @@ import ventasRoutes from './routes/ventas.routes';
 import documentosRoutes from './routes/documentos.routes';
 import comisionesRoutes from './routes/comisiones.routes';
 import uploadRoutes from './routes/upload.routes';
+import pdfRoutes from './routes/pdf.routes';
 
 app.use('/api/auth', express.json(), authRoutes);
 app.use('/api/paquetes', express.json(), paquetesRoutes);
@@ -43,6 +48,7 @@ app.use('/api/ventas', express.json(), ventasRoutes);
 app.use('/api/documentos', express.json(), documentosRoutes);
 app.use('/api/comisiones', express.json(), comisionesRoutes);
 app.use('/api/upload', uploadRoutes); // Sin express.json() - usa multipart
+app.use('/api/pdf', express.json(), pdfRoutes); // Rutas para generación de PDFs
 
 // Health check con verificación de Supabase
 app.get('/api/health', async (req, res) => {

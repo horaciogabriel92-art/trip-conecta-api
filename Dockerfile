@@ -16,8 +16,21 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init
+# Install dependencies for Puppeteer/Chromium
+RUN apk add --no-cache \
+    dumb-init \
+    chromium \
+    nss \
+    freetype \
+    freetype-dev \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont \
+    && rm -rf /var/cache/apk/*
+
+# Tell Puppeteer to skip installing Chrome. We'll be using the installed package.
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 # Copy package files and install production deps
 COPY package*.json ./
@@ -26,8 +39,11 @@ RUN npm ci --only=production && npm cache clean --force
 # Copy compiled app from builder
 COPY --from=builder /app/dist ./dist
 
-# Create directories for database and storage
-RUN mkdir -p database storage/uploads
+# Copy templates (needed for Pug)
+COPY --from=builder /app/src/templates ./src/templates
+
+# Create directories for storage
+RUN mkdir -p database storage/uploads storage/cotizaciones-pdfs
 
 # Expose port
 EXPOSE 3001
