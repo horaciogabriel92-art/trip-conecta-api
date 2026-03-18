@@ -26,6 +26,10 @@ RUN apk add --no-cache \
     harfbuzz \
     ca-certificates \
     ttf-freefont \
+    ttf-liberation \
+    font-noto-emoji \
+    wqy-zenhei \
+    chromium-chromedriver \
     && rm -rf /var/cache/apk/*
 
 # Tell Puppeteer to skip installing Chrome. We'll be using the installed package.
@@ -43,8 +47,13 @@ COPY --from=builder /app/dist ./dist
 # Los templates deben estar accesibles desde el código compilado en dist/
 COPY --from=builder /app/src/templates ./dist/templates
 
-# Create directories for storage
-RUN mkdir -p database storage/uploads storage/cotizaciones-pdfs
+# Create directories for storage with proper permissions
+RUN mkdir -p database storage/uploads storage/cotizaciones-pdfs && \
+    chmod -R 777 storage
+
+# Add user for running chromium (recommended for security)
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nextjs -u 1001
 
 # Expose port
 EXPOSE 3001
@@ -53,6 +62,11 @@ EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD wget -qO- http://localhost:3001/api/health || exit 1
 
-# Run the application
+# Change ownership of the app directory
+RUN chown -R nextjs:nodejs /app
+
+# Run the application as non-root user
+USER nextjs
+
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["node", "dist/index.js"]

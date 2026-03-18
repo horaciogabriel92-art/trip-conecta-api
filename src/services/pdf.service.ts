@@ -112,15 +112,21 @@ export async function generarPDFCotizacion(
         // Lanzar Puppeteer (usa Chromium del sistema si está disponible)
         logger.info(`Iniciando Puppeteer. Chromium path: ${process.env.PUPPETEER_EXECUTABLE_PATH || 'default'}`);
         const browser = await puppeteer.launch({
-            headless: true,
+            headless: 'shell',
             executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
                 '--disable-accelerated-2d-canvas',
-                '--disable-gpu'
-            ]
+                '--disable-gpu',
+                '--disable-web-security',
+                '--disable-features=IsolateOrigins,site-per-process',
+                '--disable-site-isolation-trials',
+                '--single-process',
+                '--no-zygote'
+            ],
+            dumpio: true // Log para debug
         });
         logger.info('Puppeteer iniciado exitosamente');
 
