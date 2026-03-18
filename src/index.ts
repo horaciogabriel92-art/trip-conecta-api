@@ -40,6 +40,7 @@ import documentosRoutes from './routes/documentos.routes';
 import comisionesRoutes from './routes/comisiones.routes';
 import uploadRoutes from './routes/upload.routes';
 import pdfRoutes from './routes/pdf.routes';
+import debugRoutes from './routes/debug.routes';
 
 app.use('/api/auth', express.json(), authRoutes);
 app.use('/api/paquetes', express.json(), paquetesRoutes);
@@ -49,6 +50,7 @@ app.use('/api/documentos', express.json(), documentosRoutes);
 app.use('/api/comisiones', express.json(), comisionesRoutes);
 app.use('/api/upload', uploadRoutes); // Sin express.json() - usa multipart
 app.use('/api/pdf', express.json(), pdfRoutes); // Rutas para generación de PDFs
+app.use('/api/debug', express.json(), debugRoutes); // Rutas de debug
 
 // Health check con verificación de Supabase
 app.get('/api/health', async (req, res) => {
