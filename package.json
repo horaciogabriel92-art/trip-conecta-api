@@ -27,7 +27,8 @@
     "pug": "^3.0.4",
     "puppeteer": "^24.39.1",
     "uuid": "^13.0.0",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "@types/pug": "^2.0.10"
   },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
