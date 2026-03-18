@@ -179,11 +179,12 @@ export const generarPDF = async (req: Request, res: Response) => {
             }
         });
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error generando PDF:', error);
         res.status(500).json({
             error: 'Error al generar el PDF',
-            details: error instanceof Error ? error.message : 'Error desconocido'
+            details: error.message || 'Error desconocido',
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
         });
     }
 };

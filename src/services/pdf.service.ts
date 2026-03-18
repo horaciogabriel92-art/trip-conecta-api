@@ -79,8 +79,11 @@ export async function generarPDFCotizacion(
     filename?: string
 ): Promise<{ filePath: string; publicUrl: string }> {
     try {
+        logger.info(`Iniciando generación de PDF para cotización: ${data.cotizacion.codigo}`);
+        
         // Asegurar que existe el directorio
         await fs.mkdir(PDF_STORAGE_PATH, { recursive: true });
+        logger.info(`Directorio de PDFs verificado: ${PDF_STORAGE_PATH}`);
 
         // Generar nombre de archivo si no se proporciona
         const pdfFilename = filename || `COT-${data.cotizacion.codigo}-${Date.now()}.pdf`;
@@ -88,12 +91,26 @@ export async function generarPDFCotizacion(
 
         // Compilar template Pug
         const templatePath = path.join(__dirname, '../templates/pdf/cotizacion.pug');
+        logger.info(`Buscando template en: ${templatePath}`);
+        
+        // Verificar que el template existe
+        try {
+            await fs.access(templatePath);
+            logger.info('Template encontrado');
+        } catch (e) {
+            logger.error(`Template NO encontrado en: ${templatePath}`);
+            throw new Error(`Template no encontrado: ${templatePath}`);
+        }
+        
         const compiledTemplate = pug.compileFile(templatePath);
+        logger.info('Template compilado exitosamente');
 
         // Renderizar HTML
         const html = compiledTemplate(data);
+        logger.info('HTML renderizado exitosamente');
 
         // Lanzar Puppeteer (usa Chromium del sistema si está disponible)
+        logger.info(`Iniciando Puppeteer. Chromium path: ${process.env.PUPPETEER_EXECUTABLE_PATH || 'default'}`);
         const browser = await puppeteer.launch({
             headless: true,
             executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
@@ -105,6 +122,7 @@ export async function generarPDFCotizacion(
                 '--disable-gpu'
             ]
         });
+        logger.info('Puppeteer iniciado exitosamente');
 
         const page = await browser.newPage();
         
@@ -138,9 +156,10 @@ export async function generarPDFCotizacion(
             publicUrl
         };
 
-    } catch (error) {
+    } catch (error: any) {
         logger.error('Error generando PDF:', error);
-        throw new Error('No se pudo generar el PDF de la cotización');
+        logger.error('Stack trace:', error.stack);
+        throw new Error(`Error generando PDF: ${error.message}`);
     }
 }
 
