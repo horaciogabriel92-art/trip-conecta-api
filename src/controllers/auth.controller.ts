@@ -4,7 +4,10 @@ import jwt from 'jsonwebtoken';
 import { supabase } from '../config/supabase';
 import { z } from 'zod';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-this-in-prod';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+    throw new Error('❌ CRITICAL: JWT_SECRET environment variable is required');
+}
 
 const loginSchema = z.object({
   email: z.string().email(),

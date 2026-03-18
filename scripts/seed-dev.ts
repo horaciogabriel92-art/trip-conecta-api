@@ -1,4 +1,4 @@
-// Datos iniciales para Supabase
+﻿// Datos iniciales para Supabase
 // Ejecutar esto después de crear las tablas
 
 import { supabase } from './config/supabase';
