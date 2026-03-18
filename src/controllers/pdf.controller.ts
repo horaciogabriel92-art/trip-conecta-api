@@ -31,7 +31,8 @@ export const generarPDF = async (req: Request, res: Response) => {
         }
 
         // 2. Verificar permisos (solo el vendedor dueño o admin)
-        if (user.role !== 'admin' && cotizacion.vendedor_id !== user.id) {
+        // El token JWT tiene: userId (no id), role, email
+        if (user.role !== 'admin' && cotizacion.vendedor_id !== user.userId) {
             return res.status(403).json({ error: 'No tienes permiso para generar el PDF de esta cotización' });
         }
 
@@ -208,7 +209,7 @@ export const descargarPDF = async (req: Request, res: Response) => {
         }
 
         // 2. Verificar permisos
-        if (user.role !== 'admin' && cotizacion.vendedor_id !== user.id) {
+        if (user.role !== 'admin' && cotizacion.vendedor_id !== user.userId) {
             return res.status(403).json({ error: 'No tienes permiso para descargar este PDF' });
         }
 
