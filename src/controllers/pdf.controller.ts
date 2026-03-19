@@ -1,14 +1,13 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
-import { pdfQueue } from '../services/pdf-queue.service';
-import { existePDF } from '../services/pdf.service';
+import { generarPDFCotizacion, existePDF } from '../services/pdf.service';
 import path from 'path';
 import fs from 'fs/promises';
 
 const PDF_STORAGE_PATH = process.env.PDF_STORAGE_PATH || './storage/cotizaciones-pdfs';
 
 /**
- * Genera un nuevo PDF para una cotización (usando cola)
+ * Genera un nuevo PDF para una cotización
  * POST /cotizaciones/:id/pdf
  */
 export const generarPDF = async (req: Request, res: Response) => {
@@ -16,14 +15,10 @@ export const generarPDF = async (req: Request, res: Response) => {
         const { id } = req.params;
         const user = (req as any).user;
 
-        // 1. Obtener cotización con datos relacionados
+        // 1. Obtener cotización
         const { data: cotizacion, error: cotError } = await supabase
             .from('cotizaciones')
-            .select(`
-                *,
-                paquete:paquete_id (*),
-                vendedor:vendedor_id (*)
-            `)
+            .select(`*, paquete:paquete_id (*), vendedor:vendedor_id (*)`)
             .eq('id', id)
             .single();
 
@@ -31,63 +26,27 @@ export const generarPDF = async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Cotización no encontrada' });
         }
 
-        // 2. Verificar permisos (solo el vendedor dueño o admin)
-        // El token JWT tiene: userId (no id), role, email
+        // 2. Verificar permisos
         if (user.role !== 'admin' && cotizacion.vendedor_id !== user.userId) {
-            return res.status(403).json({ error: 'No tienes permiso para generar el PDF de esta cotización' });
+            return res.status(403).json({ error: 'No tienes permiso' });
         }
 
-        // 3. Parsear datos_completos (viene como string JSON en notas)
+        // 3. Parsear datos
         let datosCompletos: any = {};
-        if (cotizacion.notas && cotizacion.notas.includes('--- DATOS COMPLETOS ---')) {
+        if (cotizacion.notas?.includes('--- DATOS COMPLETOS ---')) {
             try {
-                const jsonMatch = cotizacion.notas.match(/--- DATOS COMPLETOS ---\n([\s\S]+?)(?:\n--- FIN DATOS ---|$)/);
-                if (jsonMatch) {
-                    datosCompletos = JSON.parse(jsonMatch[1]);
-                }
-            } catch (e) {
-                console.error('Error parseando datos_completos:', e);
-            }
+                const match = cotizacion.notas.match(/--- DATOS COMPLETOS ---\n([\s\S]+?)(?:\n--- FIN DATOS ---|$)/);
+                if (match) datosCompletos = JSON.parse(match[1]);
+            } catch (e) {}
         }
 
-        // 4. Preparar datos para el template
         const clienteData = datosCompletos.cliente || {};
         const pasajerosData = datosCompletos.pasajeros || [];
         const paqueteData = cotizacion.paquete || {};
         const vendedorData = cotizacion.vendedor || {};
-
-        // Calcular precios
         const total = cotizacion.precio_total || 0;
-        const anticipo = total * 0.3;
-        const saldo = total - anticipo;
 
-        // Parsear itinerario si existe
-        let itinerarioData: any[] = [];
-        try {
-            if (paqueteData.itinerario) {
-                itinerarioData = typeof paqueteData.itinerario === 'string' 
-                    ? JSON.parse(paqueteData.itinerario)
-                    : paqueteData.itinerario;
-            }
-        } catch (e) {
-            itinerarioData = [];
-        }
-
-        // Parsear incluye/no_incluye
-        let incluyeData: string[] = [];
-        let noIncluyeData: string[] = [];
-        try {
-            incluyeData = paqueteData.incluye 
-                ? (typeof paqueteData.incluye === 'string' ? JSON.parse(paqueteData.incluye) : paqueteData.incluye)
-                : [];
-            noIncluyeData = paqueteData.no_incluye
-                ? (typeof paqueteData.no_incluye === 'string' ? JSON.parse(paqueteData.no_incluye) : paqueteData.no_incluye)
-                : [];
-        } catch (e) {
-            // ignorar
-        }
-
-        // 5. Preparar datos para el PDF
+        // 4. Generar PDF
         const pdfData = {
             cotizacion: {
                 id: cotizacion.id,
@@ -129,13 +88,13 @@ export const generarPDF = async (req: Request, res: Response) => {
             })),
             precios: {
                 moneda: 'ARS',
-                precio_unitario: (total / cotizacion.num_pasajeros).toLocaleString('es-AR', { minimumFractionDigits: 2 }),
+                precio_unitario: (total / (cotizacion.num_pasajeros || 1)).toLocaleString('es-AR', { minimumFractionDigits: 2 }),
                 subtotal: total.toLocaleString('es-AR', { minimumFractionDigits: 2 }),
                 impuestos: '0.00',
                 extras: '0.00',
                 total: total.toLocaleString('es-AR', { minimumFractionDigits: 2 }),
-                anticipo: anticipo.toLocaleString('es-AR', { minimumFractionDigits: 2 }),
-                saldo: saldo.toLocaleString('es-AR', { minimumFractionDigits: 2 })
+                anticipo: (total * 0.3).toLocaleString('es-AR', { minimumFractionDigits: 2 }),
+                saldo: (total * 0.7).toLocaleString('es-AR', { minimumFractionDigits: 2 })
             },
             vendedor: {
                 nombre: vendedorData.nombre || 'Vendedor',
@@ -144,174 +103,87 @@ export const generarPDF = async (req: Request, res: Response) => {
                 telefono: vendedorData.telefono || '',
                 iniciales: `${(vendedorData.nombre || '')[0] || ''}${(vendedorData.apellido || '')[0] || ''}`.toUpperCase()
             },
-            itinerario: itinerarioData.map((item: any, index: number) => ({
-                dia: item.dia || index + 1,
-                titulo: item.titulo || `Día ${index + 1}`,
+            itinerario: (paqueteData.itinerario || []).map((item: any, idx: number) => ({
+                dia: item.dia || idx + 1,
+                titulo: item.titulo || `Día ${idx + 1}`,
                 descripcion: item.descripcion || '',
                 actividades: item.actividades || []
             })),
-            incluye: Array.isArray(incluyeData) ? incluyeData : [],
-            no_incluye: Array.isArray(noIncluyeData) ? noIncluyeData : []
+            incluye: Array.isArray(paqueteData.incluye) ? paqueteData.incluye : [],
+            no_incluye: Array.isArray(paqueteData.no_incluye) ? paqueteData.no_incluye : []
         };
 
-        // 6. Agregar a la cola (no generar directamente)
-        const queueStatus = pdfQueue.getQueueStatus();
-        const jobId = `COT-${cotizacion.codigo}`;
-        
-        const { filePath, publicUrl } = await pdfQueue.addToQueue(jobId, pdfData);
+        const { filePath, publicUrl } = await generarPDFCotizacion(pdfData, `COT-${cotizacion.codigo}.pdf`);
 
-        // 7. Guardar referencia en la base de datos
-        const { error: updateError } = await supabase
-            .from('cotizaciones')
-            .update({
-                pdf_url: publicUrl,
-                pdf_generado_en: new Date().toISOString()
-            })
-            .eq('id', id);
-
-        if (updateError) {
-            console.error('Error guardando referencia del PDF:', updateError);
-        }
+        // Guardar referencia
+        await supabase.from('cotizaciones').update({
+            pdf_url: publicUrl,
+            pdf_generado_en: new Date().toISOString()
+        }).eq('id', id);
 
         res.json({
             success: true,
-            message: 'PDF generado exitosamente',
-            data: {
-                url: publicUrl,
-                filename: path.basename(filePath),
-                cotizacion_id: id,
-                cotizacion_codigo: cotizacion.codigo,
-                queue: {
-                    position: queueStatus.queueLength,
-                    activeJobs: queueStatus.activeJobs
-                }
-            }
+            message: 'PDF generado',
+            data: { url: publicUrl, filename: path.basename(filePath) }
         });
 
     } catch (error: any) {
-        console.error('Error generando PDF:', error);
+        console.error('[PDF] Error:', error);
         res.status(500).json({
-            error: 'Error al generar el PDF',
-            details: error.message || 'Error desconocido',
-            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+            error: 'Error al generar PDF',
+            details: error.message
         });
     }
 };
 
 /**
- * Descarga un PDF existente
- * GET /cotizaciones/:id/pdf
+ * Descargar PDF existente
  */
 export const descargarPDF = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const user = (req as any).user;
 
-        // 1. Obtener cotización
-        const { data: cotizacion, error: cotError } = await supabase
+        const { data: cotizacion } = await supabase
             .from('cotizaciones')
-            .select('id, codigo, pdf_url, vendedor_id')
+            .select('pdf_url, vendedor_id')
             .eq('id', id)
             .single();
 
-        if (cotError || !cotizacion) {
-            return res.status(404).json({ error: 'Cotización no encontrada' });
-        }
-
-        // 2. Verificar permisos
+        if (!cotizacion) return res.status(404).json({ error: 'No encontrada' });
         if (user.role !== 'admin' && cotizacion.vendedor_id !== user.userId) {
-            return res.status(403).json({ error: 'No tienes permiso para descargar este PDF' });
+            return res.status(403).json({ error: 'Sin permiso' });
         }
-
-        // 3. Verificar si existe PDF
-        if (!cotizacion.pdf_url) {
-            return res.status(404).json({ 
-                error: 'PDF no generado',
-                message: 'Use POST para generar el PDF primero'
-            });
-        }
+        if (!cotizacion.pdf_url) return res.status(404).json({ error: 'PDF no generado' });
 
         const filename = path.basename(cotizacion.pdf_url);
         const filePath = path.join(PDF_STORAGE_PATH, filename);
 
-        // 4. Verificar que el archivo exista físicamente
-        const existe = await existePDF(filename);
-        if (!existe) {
-            return res.status(404).json({ 
-                error: 'Archivo PDF no encontrado',
-                message: 'El PDF fue registrado pero el archivo no existe. Regenerelo con POST.'
-            });
+        if (!await existePDF(filename)) {
+            return res.status(404).json({ error: 'Archivo no encontrado' });
         }
 
-        // 5. Enviar archivo
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        
-        const fileBuffer = await fs.readFile(filePath);
-        res.send(fileBuffer);
+        res.send(await fs.readFile(filePath));
 
     } catch (error: any) {
-        console.error('Error descargando PDF:', error);
-        res.status(500).json({
-            error: 'Error al descargar el PDF',
-            details: error.message || 'Error desconocido'
-        });
+        res.status(500).json({ error: error.message });
     }
 };
 
 /**
- * Regenera un PDF (elimina el anterior y crea uno nuevo)
- * PUT /cotizaciones/:id/pdf
+ * Regenerar PDF
  */
 export const regenerarPDF = async (req: Request, res: Response) => {
-    try {
-        const { id } = req.params;
-        
-        // 1. Obtener cotización para verificar permisos y obtener nombre del archivo actual
-        const { data: cotizacion } = await supabase
-            .from('cotizaciones')
-            .select('pdf_url')
-            .eq('id', id)
-            .single();
-
-        // 2. Eliminar PDF anterior si existe
-        if (cotizacion?.pdf_url) {
-            const oldFilename = path.basename(cotizacion.pdf_url);
-            try {
-                const oldPath = path.join(PDF_STORAGE_PATH, oldFilename);
-                await fs.unlink(oldPath);
-            } catch (e) {
-                // Ignorar error si no existe
-            }
-        }
-
-        // 3. Generar nuevo PDF (llamando a la función de generar)
-        await generarPDF(req, res);
-
-    } catch (error: any) {
-        console.error('Error regenerando PDF:', error);
-        res.status(500).json({
-            error: 'Error al regenerar el PDF',
-            details: error.message || 'Error desconocido'
-        });
+    const { id } = req.params;
+    const { data: cotizacion } = await supabase.from('cotizaciones').select('pdf_url').eq('id', id).single();
+    
+    if (cotizacion?.pdf_url) {
+        try {
+            await fs.unlink(path.join(PDF_STORAGE_PATH, path.basename(cotizacion.pdf_url)));
+        } catch {}
     }
-};
-
-/**
- * Obtiene el estado de la cola de PDFs
- * GET /pdf/queue/status
- */
-export const getQueueStatus = async (req: Request, res: Response) => {
-    try {
-        const status = pdfQueue.getQueueStatus();
-        res.json({
-            success: true,
-            data: status
-        });
-    } catch (error: any) {
-        res.status(500).json({
-            error: 'Error al obtener estado de la cola',
-            details: error.message
-        });
-    }
+    
+    await generarPDF(req, res);
 };
