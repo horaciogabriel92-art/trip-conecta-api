@@ -5,7 +5,7 @@
  * y limita la concurrencia a 3 PDFs simultáneos máximo.
  */
 
-import puppeteer from 'puppeteer';
+import puppeteer, { Browser } from 'puppeteer';
 import { logger } from '../utils/logger';
 
 // Configuración del pool
@@ -22,7 +22,7 @@ interface PDFJob {
 }
 
 interface BrowserInstance {
-    browser: puppeteer.Browser;
+    browser: Browser;
     isAvailable: boolean;
     id: number;
 }
@@ -62,7 +62,7 @@ class PDFQueueService {
     /**
      * Crea una nueva instancia de navegador
      */
-    private async createBrowser(): Promise<puppeteer.Browser> {
+    private async createBrowser(): Promise<Browser> {
         return puppeteer.launch({
             headless: 'shell',
             executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,

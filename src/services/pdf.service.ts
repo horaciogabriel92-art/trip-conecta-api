@@ -2,7 +2,7 @@
  * PDF Service - Generación de documentos PDF con Puppeteer + Pug
  */
 
-import puppeteer from 'puppeteer';
+import puppeteer, { Browser } from 'puppeteer';
 import pug from 'pug';
 import path from 'path';
 import fs from 'fs/promises';
@@ -75,7 +75,7 @@ interface CotizacionPDFData {
  * Genera un PDF usando un navegador existente (para el pool)
  */
 export async function generarPDFCotizacionConBrowser(
-    browser: puppeteer.Browser,
+    browser: Browser,
     data: CotizacionPDFData,
     filename?: string
 ): Promise<{ filePath: string; publicUrl: string }> {
@@ -99,7 +99,7 @@ export async function generarPDFCotizacionConBrowser(
     try {
         // Bloquear recursos innecesarios para mejorar rendimiento
         await page.setRequestInterception(true);
-        page.on('request', (req) => {
+        page.on('request', (req: any) => {
             const resourceType = req.resourceType();
             // Bloquear scripts, analytics, etc. que no necesitamos para PDFs
             if (['image', 'stylesheet', 'font'].includes(resourceType)) {
