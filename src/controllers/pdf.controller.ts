@@ -1,13 +1,14 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
-import { generarPDFCotizacion, existePDF } from '../services/pdf.service';
+import { pdfQueue } from '../services/pdf-queue.service';
+import { existePDF } from '../services/pdf.service';
 import path from 'path';
 import fs from 'fs/promises';
 
 const PDF_STORAGE_PATH = process.env.PDF_STORAGE_PATH || './storage/cotizaciones-pdfs';
 
 /**
- * Genera un nuevo PDF para una cotización
+ * Genera un nuevo PDF para una cotización (usando cola)
  * POST /cotizaciones/:id/pdf
  */
 export const generarPDF = async (req: Request, res: Response) => {
@@ -86,7 +87,7 @@ export const generarPDF = async (req: Request, res: Response) => {
             // ignorar
         }
 
-        // 5. Generar PDF
+        // 5. Preparar datos para el PDF
         const pdfData = {
             cotizacion: {
                 id: cotizacion.id,
@@ -153,9 +154,13 @@ export const generarPDF = async (req: Request, res: Response) => {
             no_incluye: Array.isArray(noIncluyeData) ? noIncluyeData : []
         };
 
-        const { filePath, publicUrl } = await generarPDFCotizacion(pdfData, `COT-${cotizacion.codigo}.pdf`);
+        // 6. Agregar a la cola (no generar directamente)
+        const queueStatus = pdfQueue.getQueueStatus();
+        const jobId = `COT-${cotizacion.codigo}`;
+        
+        const { filePath, publicUrl } = await pdfQueue.addToQueue(jobId, pdfData);
 
-        // 6. Guardar referencia en la base de datos (opcional)
+        // 7. Guardar referencia en la base de datos
         const { error: updateError } = await supabase
             .from('cotizaciones')
             .update({
@@ -175,7 +180,11 @@ export const generarPDF = async (req: Request, res: Response) => {
                 url: publicUrl,
                 filename: path.basename(filePath),
                 cotizacion_id: id,
-                cotizacion_codigo: cotizacion.codigo
+                cotizacion_codigo: cotizacion.codigo,
+                queue: {
+                    position: queueStatus.queueLength,
+                    activeJobs: queueStatus.activeJobs
+                }
             }
         });
 
@@ -241,11 +250,11 @@ export const descargarPDF = async (req: Request, res: Response) => {
         const fileBuffer = await fs.readFile(filePath);
         res.send(fileBuffer);
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error descargando PDF:', error);
         res.status(500).json({
             error: 'Error al descargar el PDF',
-            details: error instanceof Error ? error.message : 'Error desconocido'
+            details: error.message || 'Error desconocido'
         });
     }
 };
@@ -279,11 +288,30 @@ export const regenerarPDF = async (req: Request, res: Response) => {
         // 3. Generar nuevo PDF (llamando a la función de generar)
         await generarPDF(req, res);
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error regenerando PDF:', error);
         res.status(500).json({
             error: 'Error al regenerar el PDF',
-            details: error instanceof Error ? error.message : 'Error desconocido'
+            details: error.message || 'Error desconocido'
+        });
+    }
+};
+
+/**
+ * Obtiene el estado de la cola de PDFs
+ * GET /pdf/queue/status
+ */
+export const getQueueStatus = async (req: Request, res: Response) => {
+    try {
+        const status = pdfQueue.getQueueStatus();
+        res.json({
+            success: true,
+            data: status
+        });
+    } catch (error: any) {
+        res.status(500).json({
+            error: 'Error al obtener estado de la cola',
+            details: error.message
         });
     }
 };

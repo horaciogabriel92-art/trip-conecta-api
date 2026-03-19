@@ -41,6 +41,12 @@ import comisionesRoutes from './routes/comisiones.routes';
 import uploadRoutes from './routes/upload.routes';
 import pdfRoutes from './routes/pdf.routes';
 import debugRoutes from './routes/debug.routes';
+import { pdfQueue } from './services/pdf-queue.service';
+
+// Inicializar cola de PDFs al arrancar
+pdfQueue.initialize().catch(err => {
+    logger.error('Error inicializando cola de PDFs:', err);
+});
 
 app.use('/api/auth', express.json(), authRoutes);
 app.use('/api/paquetes', express.json(), paquetesRoutes);
