@@ -14,20 +14,8 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install Chromium and dependencies
-RUN apk add --no-cache \
-    dumb-init \
-    chromium \
-    nss \
-    freetype \
-    harfbuzz \
-    ca-certificates \
-    ttf-freefont \
-    && rm -rf /var/cache/apk/*
-
-# Puppeteer config
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+# Install dumb-init for proper signal handling
+RUN apk add --no-cache dumb-init
 
 # Copy package files
 COPY package*.json ./
@@ -35,10 +23,9 @@ RUN npm ci --only=production && npm cache clean --force
 
 # Copy built app
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/src/templates ./dist/templates
 
 # Create storage directories
-RUN mkdir -p storage/uploads storage/cotizaciones-pdfs
+RUN mkdir -p storage/uploads
 
 EXPOSE 3001
 
