@@ -558,7 +558,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
         itinerario_manual: itinerario_manual || '',
         fecha_expiracion: fecha_expiracion.toISOString(),
         estado: 'pendiente',
-        origen_datos: origen_datos || 'manual',
+        // origen_datos: origen_datos || 'manual', // TODO: Habilitar cuando Supabase refresque el schema cache
         amadeus_pnr_raw: amadeus_pnr_raw || null
     };
 
