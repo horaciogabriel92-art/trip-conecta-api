@@ -471,6 +471,7 @@ export const rechazarCotizacion = async (req: Request, res: Response) => {
 // NUEVA COTIZACIÓN MANUAL (DESDE CERO)
 // ============================================
 
+// Endpoint: POST /api/cotizaciones/manual
 export const createCotizacionManual = async (req: Request, res: Response) => {
     const { 
         cliente,
