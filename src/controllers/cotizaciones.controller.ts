@@ -551,7 +551,6 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
         tipo_cotizacion: 'manual',
         vuelos: vuelos || [],
         hospedaje: hospedaje || [],
-        traslados: traslados || [],
         datos_completos: datosCompletos,
         incluye: incluye || [],
         no_incluye: no_incluye || [],
