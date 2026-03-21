@@ -42,70 +42,54 @@ export const createCotizacion = async (req: Request, res: Response) => {
         const fecha_expiracion = new Date();
         fecha_expiracion.setDate(fecha_expiracion.getDate() + 7);
 
-        // Preparar notas extendidas con datos completos y paquete
-        let notasExtendidas = notas || '';
+        // Preparar datos del paquete como objeto para guardar en notas
+        const paqueteData: any = {
+            titulo: paquete.titulo,
+            destino: paquete.destino,
+            descripcion: paquete.descripcion,
+            duracion_dias: paquete.duracion_dias,
+            imagen_principal: paquete.imagen_principal,
+            politicas_cancelacion: paquete.politicas_cancelacion
+        };
         
-        // Agregar datos del paquete con formato legible
-        notasExtendidas += '\n\n=== PAQUETE ===\n';
-        notasExtendidas += `Título: ${paquete.titulo}\n`;
-        notasExtendidas += `Destino: ${paquete.destino}\n`;
-        notasExtendidas += `Duración: ${paquete.duracion_dias} días\n`;
-        if (paquete.descripcion) {
-            notasExtendidas += `Descripción: ${paquete.descripcion}\n`;
-        }
-        
-        // Itinerario con formato
+        // Parsear y guardar itinerario
         if (paquete.itinerario) {
-            const itinerario = typeof paquete.itinerario === 'string' 
-                ? JSON.parse(paquete.itinerario) 
-                : paquete.itinerario;
-            if (Array.isArray(itinerario) && itinerario.length > 0) {
-                notasExtendidas += '\n--- ITINERARIO ---\n';
-                itinerario.forEach((dia: any, idx: number) => {
-                    notasExtendidas += `Día ${dia.dia || idx + 1}: ${dia.titulo || ''}\n`;
-                    if (dia.descripcion) {
-                        notasExtendidas += `  ${dia.descripcion}\n`;
-                    }
-                });
-            } else if (typeof itinerario === 'string' && itinerario.trim()) {
-                notasExtendidas += '\n--- ITINERARIO ---\n';
-                notasExtendidas += itinerario + '\n';
+            try {
+                paqueteData.itinerario = typeof paquete.itinerario === 'string' 
+                    ? JSON.parse(paquete.itinerario) 
+                    : paquete.itinerario;
+            } catch (e) {
+                paqueteData.itinerario = paquete.itinerario;
             }
         }
         
-        // Incluye
+        // Parsear y guardar incluye
         if (paquete.incluye) {
-            const incluye = typeof paquete.incluye === 'string' 
-                ? JSON.parse(paquete.incluye) 
-                : paquete.incluye;
-            if (Array.isArray(incluye) && incluye.length > 0) {
-                notasExtendidas += '\n--- INCLUYE ---\n';
-                incluye.forEach((item: string) => {
-                    notasExtendidas += `✓ ${item}\n`;
-                });
+            try {
+                paqueteData.incluye = typeof paquete.incluye === 'string' 
+                    ? JSON.parse(paquete.incluye) 
+                    : paquete.incluye;
+            } catch (e) {
+                paqueteData.incluye = [];
             }
         }
         
-        // No incluye
+        // Parsear y guardar no_incluye
         if (paquete.no_incluye) {
-            const noIncluye = typeof paquete.no_incluye === 'string' 
-                ? JSON.parse(paquete.no_incluye) 
-                : paquete.no_incluye;
-            if (Array.isArray(noIncluye) && noIncluye.length > 0) {
-                notasExtendidas += '\n--- NO INCLUYE ---\n';
-                noIncluye.forEach((item: string) => {
-                    notasExtendidas += `✗ ${item}\n`;
-                });
+            try {
+                paqueteData.no_incluye = typeof paquete.no_incluye === 'string' 
+                    ? JSON.parse(paquete.no_incluye) 
+                    : paquete.no_incluye;
+            } catch (e) {
+                paqueteData.no_incluye = [];
             }
         }
         
-        // Políticas
-        if (paquete.politicas_cancelacion) {
-            notasExtendidas += '\n--- POLÍTICAS DE CANCELACIÓN ---\n';
-            notasExtendidas += paquete.politicas_cancelacion + '\n';
-        }
+        // Preparar notas extendidas
+        let notasExtendidas = notas || '';
+        notasExtendidas += '\n\n--- PAQUETE JSON ---\n' + JSON.stringify(paqueteData, null, 2);
         
-        // Datos completos del cliente y pasajeros en JSON (para uso interno)
+        // También guardar datos completos del cliente
         if (datos_completos) {
             notasExtendidas += '\n\n--- DATOS COMPLETOS ---\n' + JSON.stringify(datos_completos, null, 2);
         }
