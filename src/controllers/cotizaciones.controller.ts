@@ -473,6 +473,7 @@ export const rechazarCotizacion = async (req: Request, res: Response) => {
 
 // Endpoint: POST /api/cotizaciones/manual
 export const createCotizacionManual = async (req: Request, res: Response) => {
+    try {
     const { 
         cliente,
         pasajeros,
@@ -490,79 +491,92 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
 
     const vendedor_id = (req as any).user.userId;
 
-    console.log('Creating manual cotizacion:', { cliente, vuelos: vuelos?.length, hospedaje: hospedaje?.length });
+    // Validación de campos requeridos
+    if (!cliente || !cliente.nombre || !cliente.apellido) {
+        return res.status(400).json({ error: 'Datos del cliente incompletos' });
+    }
 
-    try {
-        // Generar código único
-        const year = new Date().getFullYear();
-        const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
-        const codigo = `COT-${year}-${random}`;
+    if (!precios || precios.total === undefined || precios.total === '') {
+        return res.status(400).json({ error: 'Precio total es requerido' });
+    }
 
-        // Calcular fecha de expiración (7 días)
-        const fecha_expiracion = new Date();
-        fecha_expiracion.setDate(fecha_expiracion.getDate() + 7);
+    console.log('Creating manual cotizacion:', { 
+        cliente: `${cliente.nombre} ${cliente.apellido}`, 
+        vuelos: vuelos?.length, 
+        hospedaje: hospedaje?.length,
+        precio: precios?.total 
+    });
 
-        // Preparar datos_completos unificado
-        const datosCompletos = {
-            cliente,
-            pasajeros: pasajeros || [],
-            num_pasajeros: 1 + (pasajeros?.length || 0)
-        };
+    // Generar código único
+    const year = new Date().getFullYear();
+    const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
+    const codigo = `COT-${year}-${random}`;
 
-        // Determinar destino principal (primera ciudad de hospedaje o destino de primer vuelo)
-        let destino_principal = '';
-        if (hospedaje && hospedaje.length > 0) {
-            destino_principal = hospedaje[0].ciudad;
-        } else if (vuelos && vuelos.length > 0) {
-            destino_principal = vuelos[vuelos.length - 1].destino_ciudad;
-        }
+    // Calcular fecha de expiración (7 días)
+    const fecha_expiracion = new Date();
+    fecha_expiracion.setDate(fecha_expiracion.getDate() + 7);
 
-        // Construir nombre del cliente
-        const cliente_nombre = `${cliente.nombre} ${cliente.apellido}`;
+    // Preparar datos_completos unificado
+    const datosCompletos = {
+        cliente,
+        pasajeros: pasajeros || [],
+        num_pasajeros: 1 + (pasajeros?.length || 0)
+    };
 
-        // Insertar cotización
-        const insertData = {
-            codigo,
-            vendedor_id,
-            paquete_id: null, // No tiene paquete asociado
-            cliente_nombre,
-            cliente_email: cliente.email,
-            cliente_telefono: cliente.telefono,
-            tipo_habitacion: hospedaje?.[0]?.tipo_habitacion || 'doble',
-            num_pasajeros: datosCompletos.num_pasajeros,
-            fecha_salida: vuelos?.[0]?.fecha_salida || null,
-            precio_total: parseFloat(precios?.total) || 0,
-            comision_vendedor: (parseFloat(precios?.total) || 0) * 0.12,
-            notas: `Cotización manual creada desde cero. Destino: ${destino_principal}`,
-            tipo_cotizacion: 'manual',
-            vuelos: vuelos || [],
-            hospedaje: hospedaje || [],
-            traslados: traslados || [],
-            datos_completos: datosCompletos,
-            incluye: incluye || [],
-            no_incluye: no_incluye || [],
-            itinerario_manual: itinerario_manual || '',
-            fecha_expiracion: fecha_expiracion.toISOString(),
-            estado: 'pendiente',
-            origen_datos: origen_datos || 'manual',
-            amadeus_pnr_raw: amadeus_pnr_raw || null
-        };
+    // Determinar destino principal (primera ciudad de hospedaje o destino de primer vuelo)
+    let destino_principal = '';
+    if (hospedaje && hospedaje.length > 0) {
+        destino_principal = hospedaje[0].ciudad;
+    } else if (vuelos && vuelos.length > 0) {
+        destino_principal = vuelos[vuelos.length - 1].destino_ciudad;
+    }
 
-        const { data: cotizacion, error } = await supabase
-            .from('cotizaciones')
-            .insert(insertData)
-            .select()
-            .single();
+    // Construir nombre del cliente
+    const cliente_nombre = `${cliente.nombre} ${cliente.apellido}`;
 
-        if (error) {
-            console.error('Error creating manual cotizacion:', error);
-            return res.status(500).json({ error: 'Error al crear cotización', details: error.message });
-        }
+    // Insertar cotización
+    const insertData = {
+        codigo,
+        vendedor_id,
+        paquete_id: null,
+        cliente_nombre,
+        cliente_email: cliente.email,
+        cliente_telefono: cliente.telefono,
+        tipo_habitacion: hospedaje?.[0]?.tipo_habitacion || 'doble',
+        num_pasajeros: datosCompletos.num_pasajeros,
+        fecha_salida: vuelos?.[0]?.fecha_salida || null,
+        precio_total: parseFloat(precios?.total) || 0,
+        comision_vendedor: (parseFloat(precios?.total) || 0) * 0.12,
+        notas: `Cotización manual creada desde cero. Destino: ${destino_principal}`,
+        tipo_cotizacion: 'manual',
+        vuelos: vuelos || [],
+        hospedaje: hospedaje || [],
+        traslados: traslados || [],
+        datos_completos: datosCompletos,
+        incluye: incluye || [],
+        no_incluye: no_incluye || [],
+        itinerario_manual: itinerario_manual || '',
+        fecha_expiracion: fecha_expiracion.toISOString(),
+        estado: 'pendiente',
+        origen_datos: origen_datos || 'manual',
+        amadeus_pnr_raw: amadeus_pnr_raw || null
+    };
 
-        res.status(201).json({
-            message: 'Cotización manual creada exitosamente',
-            cotizacion
-        });
+    const { data: cotizacion, error } = await supabase
+        .from('cotizaciones')
+        .insert(insertData)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('Error creating manual cotizacion:', error);
+        return res.status(500).json({ error: 'Error al crear cotización', details: error.message });
+    }
+
+    res.status(201).json({
+        message: 'Cotización manual creada exitosamente',
+        cotizacion
+    });
 
     } catch (error: any) {
         console.error('Error creating manual quote:', error);
