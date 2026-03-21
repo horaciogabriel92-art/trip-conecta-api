@@ -477,9 +477,9 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
     const { 
         cliente,
         pasajeros,
+        nombre_cotizacion,
         vuelos,
         hospedaje,
-        traslados,
         itinerario_manual,
         incluye,
         no_incluye,
@@ -549,6 +549,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
         comision_vendedor: (parseFloat(precios?.total) || 0) * 0.12,
         notas: `Cotización manual creada desde cero. Destino: ${destino_principal}`,
         tipo_cotizacion: 'manual',
+        nombre_cotizacion: nombre_cotizacion || `Cotización Manual - ${destino_principal}`,
         vuelos: vuelos || [],
         hospedaje: hospedaje || [],
         datos_completos: datosCompletos,

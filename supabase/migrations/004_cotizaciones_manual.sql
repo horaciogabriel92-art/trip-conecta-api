@@ -12,10 +12,13 @@ CHECK (tipo_cotizacion IN ('paquete', 'manual'));
 ALTER TABLE cotizaciones 
 ADD COLUMN IF NOT EXISTS vuelos jsonb DEFAULT '[]'::jsonb,
 ADD COLUMN IF NOT EXISTS hospedaje jsonb DEFAULT '[]'::jsonb,
-ADD COLUMN IF NOT EXISTS traslados jsonb DEFAULT '[]'::jsonb,
 ADD COLUMN IF NOT EXISTS datos_completos jsonb DEFAULT '{}'::jsonb,
 ADD COLUMN IF NOT EXISTS incluye jsonb DEFAULT '[]'::jsonb,
 ADD COLUMN IF NOT EXISTS no_incluye jsonb DEFAULT '[]'::jsonb;
+
+-- 2b. Campo para nombre de la cotización (manual)
+ALTER TABLE cotizaciones 
+ADD COLUMN IF NOT EXISTS nombre_cotizacion varchar(255);
 
 -- 3. Campo texto para itinerario libre
 ALTER TABLE cotizaciones 
