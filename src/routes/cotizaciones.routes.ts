@@ -12,4 +12,7 @@ router.put('/:id/convertir', authenticateToken, cotizacionesController.convertir
 router.put('/:id/aprobar', authenticateToken, cotizacionesController.aprobarCotizacion);
 router.put('/:id/rechazar', authenticateToken, cotizacionesController.rechazarCotizacion);
 
+// Nueva cotización manual (desde cero)
+router.post('/manual', authenticateToken, cotizacionesController.createCotizacionManual);
+
 export default router;
