@@ -42,8 +42,70 @@ export const createCotizacion = async (req: Request, res: Response) => {
         const fecha_expiracion = new Date();
         fecha_expiracion.setDate(fecha_expiracion.getDate() + 7);
 
-        // Preparar notas extendidas con datos completos
+        // Preparar notas extendidas con datos completos y paquete
         let notasExtendidas = notas || '';
+        
+        // Agregar datos del paquete con formato legible
+        notasExtendidas += '\n\n=== PAQUETE ===\n';
+        notasExtendidas += `Título: ${paquete.titulo}\n`;
+        notasExtendidas += `Destino: ${paquete.destino}\n`;
+        notasExtendidas += `Duración: ${paquete.duracion_dias} días\n`;
+        if (paquete.descripcion) {
+            notasExtendidas += `Descripción: ${paquete.descripcion}\n`;
+        }
+        
+        // Itinerario con formato
+        if (paquete.itinerario) {
+            const itinerario = typeof paquete.itinerario === 'string' 
+                ? JSON.parse(paquete.itinerario) 
+                : paquete.itinerario;
+            if (Array.isArray(itinerario) && itinerario.length > 0) {
+                notasExtendidas += '\n--- ITINERARIO ---\n';
+                itinerario.forEach((dia: any, idx: number) => {
+                    notasExtendidas += `Día ${dia.dia || idx + 1}: ${dia.titulo || ''}\n`;
+                    if (dia.descripcion) {
+                        notasExtendidas += `  ${dia.descripcion}\n`;
+                    }
+                });
+            } else if (typeof itinerario === 'string' && itinerario.trim()) {
+                notasExtendidas += '\n--- ITINERARIO ---\n';
+                notasExtendidas += itinerario + '\n';
+            }
+        }
+        
+        // Incluye
+        if (paquete.incluye) {
+            const incluye = typeof paquete.incluye === 'string' 
+                ? JSON.parse(paquete.incluye) 
+                : paquete.incluye;
+            if (Array.isArray(incluye) && incluye.length > 0) {
+                notasExtendidas += '\n--- INCLUYE ---\n';
+                incluye.forEach((item: string) => {
+                    notasExtendidas += `✓ ${item}\n`;
+                });
+            }
+        }
+        
+        // No incluye
+        if (paquete.no_incluye) {
+            const noIncluye = typeof paquete.no_incluye === 'string' 
+                ? JSON.parse(paquete.no_incluye) 
+                : paquete.no_incluye;
+            if (Array.isArray(noIncluye) && noIncluye.length > 0) {
+                notasExtendidas += '\n--- NO INCLUYE ---\n';
+                noIncluye.forEach((item: string) => {
+                    notasExtendidas += `✗ ${item}\n`;
+                });
+            }
+        }
+        
+        // Políticas
+        if (paquete.politicas_cancelacion) {
+            notasExtendidas += '\n--- POLÍTICAS DE CANCELACIÓN ---\n';
+            notasExtendidas += paquete.politicas_cancelacion + '\n';
+        }
+        
+        // Datos completos del cliente y pasajeros en JSON (para uso interno)
         if (datos_completos) {
             notasExtendidas += '\n\n--- DATOS COMPLETOS ---\n' + JSON.stringify(datos_completos, null, 2);
         }
