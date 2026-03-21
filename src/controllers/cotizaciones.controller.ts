@@ -43,17 +43,21 @@ export const createCotizacion = async (req: Request, res: Response) => {
         fecha_expiracion.setDate(fecha_expiracion.getDate() + 7);
 
         // Preparar datos del paquete como objeto para guardar en notas
+        // Nota: el campo 'descripcion' contiene el itinerario (la pestaña cambió de nombre)
         const paqueteData: any = {
             titulo: paquete.titulo,
             destino: paquete.destino,
-            descripcion: paquete.descripcion,
+            descripcion: '', // No mostrar descripción si es el itinerario
             duracion_dias: paquete.duracion_dias,
             imagen_principal: paquete.imagen_principal,
             politicas_cancelacion: paquete.politicas_cancelacion
         };
         
-        // Parsear y guardar itinerario
-        if (paquete.itinerario) {
+        // El itinerario está en el campo 'descripcion' (la pestaña se llamaba así antes)
+        // o en el campo 'itinerario' si existe
+        if (paquete.descripcion && paquete.descripcion.trim()) {
+            paqueteData.itinerario = paquete.descripcion;
+        } else if (paquete.itinerario) {
             try {
                 paqueteData.itinerario = typeof paquete.itinerario === 'string' 
                     ? JSON.parse(paquete.itinerario) 
