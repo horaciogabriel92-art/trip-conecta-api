@@ -517,10 +517,16 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
     fecha_expiracion.setDate(fecha_expiracion.getDate() + 7);
 
     // Preparar datos_completos unificado
+    // Combinar cliente (titular) + pasajeros adicionales en un solo array
+    const todosLosPasajeros = [
+        { ...cliente, es_titular: true },
+        ...(pasajeros || [])
+    ];
+    
     const datosCompletos = {
         cliente,
-        pasajeros: pasajeros || [],
-        num_pasajeros: 1 + (pasajeros?.length || 0)
+        pasajeros: todosLosPasajeros,
+        num_pasajeros: todosLosPasajeros.length
     };
 
     // Determinar destino principal (primera ciudad de hospedaje o destino de primer vuelo)
