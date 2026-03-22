@@ -32,6 +32,7 @@ interface PaqueteFrontend {
   creado_por?: string;
   fecha_creacion?: string;
   fecha_actualizacion?: string;
+  vuelos?: any[];
 }
 
 // Función para mapear datos del frontend al schema de la BD
@@ -93,6 +94,9 @@ function mapearPaqueteBD(data: PaqueteFrontend): any {
   if (data.recursos_vendedores) {
     paqueteBD.recursos_vendedores = Array.isArray(data.recursos_vendedores) ? data.recursos_vendedores : [];
   }
+  if (data.vuelos) {
+    paqueteBD.vuelos = Array.isArray(data.vuelos) ? data.vuelos : [];
+  }
 
   return paqueteBD;
 }
@@ -124,6 +128,7 @@ function mapearPaqueteFrontend(data: any): PaqueteFrontend {
     itinerario: data.itinerario || [],
     galeria: data.galeria || [],
     recursos_vendedores: data.recursos_vendedores || [],
+    vuelos: data.vuelos || [],
     fecha_creacion: data.fecha_creacion,
     fecha_actualizacion: data.fecha_actualizacion
   };
