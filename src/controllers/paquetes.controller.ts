@@ -87,7 +87,7 @@ function mapearPaqueteBD(data: PaqueteFrontend): any {
   }
   // Itinerario puede ser objeto {texto, dias} o array legacy
   if (data.itinerario) {
-    if (typeof data.itinerario === 'object' && data.itinerario.texto !== undefined) {
+    if (typeof data.itinerario === 'object' && !Array.isArray(data.itinerario) && (data.itinerario as { texto?: string }).texto !== undefined) {
       // Nuevo formato: { texto: string, dias: array }
       paqueteBD.itinerario = data.itinerario;
     } else if (Array.isArray(data.itinerario)) {
