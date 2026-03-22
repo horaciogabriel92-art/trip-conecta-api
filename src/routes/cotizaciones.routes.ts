@@ -11,6 +11,7 @@ router.put('/:id', authenticateToken, cotizacionesController.updateCotizacion);
 router.put('/:id/convertir', authenticateToken, cotizacionesController.convertirAVenta);
 router.put('/:id/aprobar', authenticateToken, cotizacionesController.aprobarCotizacion);
 router.put('/:id/rechazar', authenticateToken, cotizacionesController.rechazarCotizacion);
+router.delete('/:id', authenticateToken, cotizacionesController.deleteCotizacion);
 
 // Nueva cotización manual (desde cero)
 router.post('/manual', authenticateToken, cotizacionesController.createCotizacionManual);

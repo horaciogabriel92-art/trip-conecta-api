@@ -43,28 +43,32 @@ export const createCotizacion = async (req: Request, res: Response) => {
         fecha_expiracion.setDate(fecha_expiracion.getDate() + 7);
 
         // Preparar datos del paquete como objeto para guardar en notas
-        // Nota: el campo 'descripcion' contiene el itinerario (la pestaña cambió de nombre)
         const paqueteData: any = {
             titulo: paquete.titulo,
             destino: paquete.destino,
-            descripcion: '', // No mostrar descripción si es el itinerario
+            descripcion: paquete.descripcion || '',
             duracion_dias: paquete.duracion_dias,
             imagen_principal: paquete.imagen_principal,
             politicas_cancelacion: paquete.politicas_cancelacion
         };
         
-        // El itinerario está en el campo 'descripcion' (la pestaña se llamaba así antes)
-        // o en el campo 'itinerario' si existe
-        if (paquete.descripcion && paquete.descripcion.trim()) {
-            paqueteData.itinerario = paquete.descripcion;
-        } else if (paquete.itinerario) {
-            try {
-                paqueteData.itinerario = typeof paquete.itinerario === 'string' 
-                    ? JSON.parse(paquete.itinerario) 
-                    : paquete.itinerario;
-            } catch (e) {
+        // Manejar itinerario: puede ser objeto {texto, dias} o string/array legacy
+        if (paquete.itinerario) {
+            if (typeof paquete.itinerario === 'object' && paquete.itinerario.texto !== undefined) {
+                // Nuevo formato: { texto: string, dias: array }
+                paqueteData.itinerario = paquete.itinerario;
+            } else if (Array.isArray(paquete.itinerario)) {
+                // Formato legacy array -> convertir a nuevo formato
+                paqueteData.itinerario = { texto: '', dias: paquete.itinerario };
+            } else if (typeof paquete.itinerario === 'string') {
+                // String -> convertir a objeto
+                paqueteData.itinerario = { texto: paquete.itinerario, dias: [] };
+            } else {
                 paqueteData.itinerario = paquete.itinerario;
             }
+        } else if (paquete.descripcion && paquete.descripcion.trim()) {
+            // Fallback a descripcion si no hay itinerario
+            paqueteData.itinerario = { texto: paquete.descripcion, dias: [] };
         }
         
         // Parsear y guardar incluye
@@ -586,6 +590,58 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
 
     } catch (error: any) {
         console.error('Error creating manual quote:', error);
+        res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+};
+
+export const deleteCotizacion = async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const vendedor_id = (req as any).user.userId;
+    const userRole = (req as any).user.rol;
+
+    try {
+        // Verificar que la cotización existe
+        const { data: cotizacion, error: findError } = await supabase
+            .from('cotizaciones')
+            .select('id, vendedor_id, estado')
+            .eq('id', id)
+            .single();
+
+        if (findError || !cotizacion) {
+            return res.status(404).json({ error: 'Cotización no encontrada' });
+        }
+
+        // Verificar permisos: solo el dueño o un admin puede eliminar
+        if (cotizacion.vendedor_id !== vendedor_id && userRole !== 'admin') {
+            return res.status(403).json({ error: 'No tienes permiso para eliminar esta cotización' });
+        }
+
+        // No permitir eliminar cotizaciones ya vendidas (convertidas)
+        if (cotizacion.estado === 'convertida') {
+            return res.status(400).json({ 
+                error: 'No se puede eliminar una cotización que ya fue convertida en venta',
+                message: 'Esta cotización ya fue vendida y no puede ser eliminada por razones de auditoría.'
+            });
+        }
+
+        // Eliminar la cotización
+        const { error: deleteError } = await supabase
+            .from('cotizaciones')
+            .delete()
+            .eq('id', id);
+
+        if (deleteError) {
+            console.error('Error deleting cotizacion:', deleteError);
+            return res.status(500).json({ error: 'Error al eliminar la cotización', details: deleteError.message });
+        }
+
+        res.json({
+            message: 'Cotización eliminada permanentemente',
+            id: id
+        });
+
+    } catch (error: any) {
+        console.error('Error deleting cotizacion:', error);
         res.status(500).json({ error: 'Internal server error', details: error.message });
     }
 };

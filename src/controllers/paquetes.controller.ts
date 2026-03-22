@@ -85,8 +85,23 @@ function mapearPaqueteBD(data: PaqueteFrontend): any {
   if (data.no_incluye) {
     paqueteBD.no_incluye = Array.isArray(data.no_incluye) ? data.no_incluye : [data.no_incluye];
   }
+  // Itinerario puede ser objeto {texto, dias} o array legacy
   if (data.itinerario) {
-    paqueteBD.itinerario = Array.isArray(data.itinerario) ? data.itinerario : [];
+    if (typeof data.itinerario === 'object' && data.itinerario.texto !== undefined) {
+      // Nuevo formato: { texto: string, dias: array }
+      paqueteBD.itinerario = data.itinerario;
+    } else if (Array.isArray(data.itinerario)) {
+      // Formato legacy: array -> convertir a nuevo formato
+      paqueteBD.itinerario = { texto: '', dias: data.itinerario };
+    } else if (typeof data.itinerario === 'string') {
+      // String simple -> convertir a nuevo formato
+      paqueteBD.itinerario = { texto: data.itinerario, dias: [] };
+    }
+  }
+  // Si viene descripcion pero no itinerario, usar descripcion como itinerario
+  if (data.descripcion && !data.itinerario) {
+    paqueteBD.itinerario = { texto: data.descripcion, dias: [] };
+    paqueteBD.descripcion = data.descripcion; // Mantener por compatibilidad
   }
   if (data.galeria) {
     paqueteBD.galeria = Array.isArray(data.galeria) ? data.galeria : [];
@@ -125,7 +140,7 @@ function mapearPaqueteFrontend(data: any): PaqueteFrontend {
     cupos_disponibles: data.cupos_disponibles,
     incluye: data.incluye || [],
     no_incluye: data.no_incluye || [],
-    itinerario: data.itinerario || [],
+    itinerario: data.itinerario || { texto: data.descripcion || '', dias: [] },
     galeria: data.galeria || [],
     recursos_vendedores: data.recursos_vendedores || [],
     vuelos: data.vuelos || [],
