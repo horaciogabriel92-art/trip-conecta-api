@@ -5,15 +5,17 @@ import { authenticateToken } from '../middleware/auth';
 const router = Router();
 
 router.get('/', authenticateToken, cotizacionesController.getCotizaciones);
-router.get('/:id', authenticateToken, cotizacionesController.getCotizacionById);
 router.post('/', authenticateToken, cotizacionesController.createCotizacion);
-router.put('/:id', authenticateToken, cotizacionesController.updateCotizacion);
+
+// Rutas específicas (deben ir antes que /:id)
+router.post('/manual', authenticateToken, cotizacionesController.createCotizacionManual);
+
+// Rutas con :id - orden específico a genérico
+router.get('/:id', authenticateToken, cotizacionesController.getCotizacionById);
 router.put('/:id/convertir', authenticateToken, cotizacionesController.convertirAVenta);
 router.put('/:id/aprobar', authenticateToken, cotizacionesController.aprobarCotizacion);
 router.put('/:id/rechazar', authenticateToken, cotizacionesController.rechazarCotizacion);
+router.put('/:id', authenticateToken, cotizacionesController.updateCotizacion);
 router.delete('/:id', authenticateToken, cotizacionesController.deleteCotizacion);
-
-// Nueva cotización manual (desde cero)
-router.post('/manual', authenticateToken, cotizacionesController.createCotizacionManual);
 
 export default router;
