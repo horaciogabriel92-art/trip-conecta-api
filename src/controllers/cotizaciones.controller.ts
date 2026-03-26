@@ -367,14 +367,20 @@ export const updateCotizacion = async (req: Request, res: Response) => {
     const data = req.body;
     const user = (req as any).user;
     
+    console.log('UPDATE COTIZACION - ID recibido:', id, 'tipo:', typeof id);
+    console.log('UPDATE COTIZACION - User:', user.userId, 'Role:', user.role);
+    console.log('UPDATE COTIZACION - Data:', data);
+    
     try {
         // Verificar que sea del vendedor o admin
         if (user.role !== 'admin') {
-            const { data: cot } = await supabase
+            const { data: cot, error: permError } = await supabase
                 .from('cotizaciones')
                 .select('vendedor_id')
                 .eq('id', id)
                 .single();
+            
+            console.log('UPDATE COTIZACION - Perm check:', cot, 'Error:', permError);
             
             if (!cot || cot.vendedor_id !== user.userId) {
                 return res.status(403).json({ error: 'No autorizado' });
@@ -388,8 +394,10 @@ export const updateCotizacion = async (req: Request, res: Response) => {
             .select()
             .single();
 
+        console.log('UPDATE COTIZACION - Result:', cotizacion, 'Error:', error);
+
         if (error || !cotizacion) {
-            return res.status(404).json({ error: 'Cotización no encontrada' });
+            return res.status(404).json({ error: 'Cotización no encontrada', details: error });
         }
 
         res.json({ message: 'Cotización actualizada', cotizacion });
@@ -647,6 +655,63 @@ export const deleteCotizacion = async (req: Request, res: Response) => {
 
     } catch (error: any) {
         console.error('Error deleting cotizacion:', error);
+        res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+};
+
+// ============================================
+// ENDPOINT PARA ENVIAR COTIZACIÓN (marcar como enviada)
+// ============================================
+
+export const enviarCotizacion = async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const user = (req as any).user;
+    
+    console.log('ENVIAR COTIZACION - ID recibido:', id);
+    console.log('ENVIAR COTIZACION - User:', user.userId, 'Role:', user.role);
+    
+    try {
+        // Primero verificar que exista la cotización
+        const { data: cotizacionExistente, error: findError } = await supabase
+            .from('cotizaciones')
+            .select('id, vendedor_id, estado, codigo')
+            .eq('id', id)
+            .single();
+        
+        console.log('ENVIAR COTIZACION - Found:', cotizacionExistente, 'Error:', findError);
+        
+        if (findError || !cotizacionExistente) {
+            return res.status(404).json({ error: 'Cotización no encontrada', details: findError });
+        }
+        
+        // Verificar permisos
+        if (user.role !== 'admin' && cotizacionExistente.vendedor_id !== user.userId) {
+            return res.status(403).json({ error: 'No autorizado' });
+        }
+        
+        // Actualizar estado a respondida y fecha de envío
+        const { data: cotizacion, error } = await supabase
+            .from('cotizaciones')
+            .update({
+                estado: 'respondida',
+                fecha_envio: new Date().toISOString()
+            })
+            .eq('id', id)
+            .select()
+            .single();
+        
+        if (error) {
+            console.error('ENVIAR COTIZACION - Update error:', error);
+            return res.status(500).json({ error: 'Error al actualizar', details: error });
+        }
+        
+        res.json({ 
+            message: 'Cotización marcada como enviada', 
+            cotizacion 
+        });
+        
+    } catch (error: any) {
+        console.error('Error enviando cotización:', error);
         res.status(500).json({ error: 'Internal server error', details: error.message });
     }
 };
