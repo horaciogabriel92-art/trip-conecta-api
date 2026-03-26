@@ -482,6 +482,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
         cliente,
         pasajeros,
         nombre_cotizacion,
+        vendedor_id: vendedor_id_body,
         vuelos,
         hospedaje,
         itinerario_manual,
@@ -493,7 +494,11 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
         amadeus_pnr_raw
     } = req.body;
 
-    const vendedor_id = (req as any).user.userId;
+    const user = (req as any).user;
+    // Si es admin y se envía vendedor_id en el body, usar ese. Si no, usar el del token.
+    const vendedor_id = (user.role === 'admin' && vendedor_id_body) 
+        ? vendedor_id_body 
+        : user.userId;
 
     // Validación de campos requeridos
     if (!cliente || !cliente.nombre || !cliente.apellido) {
