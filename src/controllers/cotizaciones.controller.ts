@@ -875,22 +875,54 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
             }
         }
 
-        // 2.2: SIEMPRE buscar y agregar el pasajero titular del cliente PRIMERO
-        const { data: pasajeroTitular } = await supabase
+        // 2.2: SIEMPRE obtener el pasajero titular del cliente
+        // Primero buscar si ya existe
+        let { data: pasajeroTitular } = await supabase
             .from('pasajeros')
             .select('*')
             .eq('cliente_titular_id', clienteFinalId)
             .eq('es_cliente_registrado', true)
             .single();
         
+        // Si NO existe pasajero titular, crearlo automáticamente con datos del cliente
+        if (!pasajeroTitular && clienteData) {
+            console.log('Creando pasajero titular automáticamente para cliente:', clienteFinalId);
+            const { data: nuevoTitular, error: errorCreando } = await supabase
+                .from('pasajeros')
+                .insert({
+                    cliente_titular_id: clienteFinalId,
+                    tipo_documento: clienteData.tipo_documento || 'CI',
+                    documento: clienteData.documento,
+                    nombre: clienteData.nombre,
+                    apellido: clienteData.apellido,
+                    fecha_nacimiento: clienteData.fecha_nacimiento,
+                    nacionalidad: clienteData.nacionalidad || 'Uruguay',
+                    es_cliente_registrado: true,
+                    notas: 'Creado automáticamente al generar cotización'
+                })
+                .select()
+                .single();
+            
+            if (errorCreando) {
+                console.error('Error creando pasajero titular:', errorCreando);
+            } else {
+                pasajeroTitular = nuevoTitular;
+                console.log('Pasajero titular creado:', nuevoTitular?.id);
+            }
+        }
+        
+        // Agregar el titular a la lista (evitando duplicados)
         if (pasajeroTitular) {
-            pasajerosVinculados.push({
-                pasajero_id: pasajeroTitular.id,
-                es_titular: true,
-                nombre_snapshot: pasajeroTitular.nombre,
-                apellido_snapshot: pasajeroTitular.apellido,
-                documento_snapshot: pasajeroTitular.documento
-            });
+            const yaExiste = pasajerosVinculados.some(p => p.pasajero_id === pasajeroTitular.id);
+            if (!yaExiste) {
+                pasajerosVinculados.push({
+                    pasajero_id: pasajeroTitular.id,
+                    es_titular: true,
+                    nombre_snapshot: pasajeroTitular.nombre,
+                    apellido_snapshot: pasajeroTitular.apellido,
+                    documento_snapshot: pasajeroTitular.documento
+                });
+            }
         }
 
         // 2.3: Crear pasajeros nuevos (acompañantes)
