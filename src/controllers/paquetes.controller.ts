@@ -1,6 +1,19 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 
+// Interfaz para Hotel en paquetes
+interface Hotel {
+  id: string;
+  nombre: string;
+  link?: string;
+  ciudad?: string;
+  precios: {
+    doble: number;
+    triple?: number;
+    cuadruple?: number;
+  };
+}
+
 // Interfaz para los datos que vienen del frontend
 interface PaqueteFrontend {
   id?: string;
@@ -33,6 +46,7 @@ interface PaqueteFrontend {
   fecha_creacion?: string;
   fecha_actualizacion?: string;
   vuelos?: any[];
+  hoteles?: Hotel[];
 }
 
 // Función para mapear datos del frontend al schema de la BD
@@ -112,6 +126,9 @@ function mapearPaqueteBD(data: PaqueteFrontend): any {
   if (data.vuelos) {
     paqueteBD.vuelos = Array.isArray(data.vuelos) ? data.vuelos : [];
   }
+  if (data.hoteles) {
+    paqueteBD.hoteles = Array.isArray(data.hoteles) ? data.hoteles : [];
+  }
 
   return paqueteBD;
 }
@@ -144,6 +161,7 @@ function mapearPaqueteFrontend(data: any): PaqueteFrontend {
     galeria: data.galeria || [],
     recursos_vendedores: data.recursos_vendedores || [],
     vuelos: data.vuelos || [],
+    hoteles: data.hoteles || [],
     fecha_creacion: data.fecha_creacion,
     fecha_actualizacion: data.fecha_actualizacion
   };

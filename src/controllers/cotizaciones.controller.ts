@@ -738,6 +738,8 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
             vendedor_id: vendedor_id_body,
             paquete_id,           // Si viene de un paquete del catálogo
             tipo_cotizacion,      // 'manual' | 'paquete'
+            hotel_seleccionado_id, // ID del hotel seleccionado (si viene de paquete con hoteles)
+            tipo_habitacion,      // 'doble' | 'triple' | 'cuadruple'
             vuelos,
             hospedajes,
             itinerario,
@@ -925,6 +927,10 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
         let paqueteNoIncluye = no_incluye || [];
         let paquetePoliticas = politicas_cancelacion || '';
         let paqueteDestino = '';
+        let hotelSeleccionado: any = null;
+        let precioCalculado = parseFloat(precios?.total) || 0;
+        const habitacionTipo = tipo_habitacion || 'doble';
+        const numViajeros = pasajerosVinculados.length || 1;
         
         if (paquete_id) {
             const { data: paquete } = await supabase
@@ -950,6 +956,26 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                 if (!paquetePoliticas && paquete.politicas_cancelacion) {
                     paquetePoliticas = paquete.politicas_cancelacion;
                 }
+                
+                // Buscar hotel seleccionado
+                const hoteles = paquete.hoteles || [];
+                if (hotel_seleccionado_id && hoteles.length > 0) {
+                    hotelSeleccionado = hoteles.find((h: any) => h.id === hotel_seleccionado_id);
+                }
+                // Si no se especificó hotel pero hay hoteles, usar el primero
+                if (!hotelSeleccionado && hoteles.length > 0) {
+                    hotelSeleccionado = hoteles[0];
+                }
+                
+                // Calcular precio según hotel y tipo de habitación
+                if (hotelSeleccionado) {
+                    const precioPorPersona = hotelSeleccionado.precios?.[habitacionTipo] 
+                        || hotelSeleccionado.precios?.doble 
+                        || paquete.precio_doble 
+                        || paquete.precio_base 
+                        || 0;
+                    precioCalculado = precioPorPersona * numViajeros;
+                }
             }
         }
 
@@ -963,7 +989,9 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
 
         // Determinar destino principal
         let destino_principal = paqueteDestino;
-        if (!destino_principal && hospedajes && hospedajes.length > 0) {
+        if (!destino_principal && hotelSeleccionado?.ciudad) {
+            destino_principal = hotelSeleccionado.ciudad;
+        } else if (!destino_principal && hospedajes && hospedajes.length > 0) {
             destino_principal = hospedajes[0].ciudad;
         } else if (!destino_principal && vuelos && vuelos.length > 0) {
             const vueloDestino = vuelos.find((v: any) => v.tipo_trayecto === 'ida' || !v.tipo_trayecto);
@@ -971,7 +999,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
         }
 
         // Preparar paquete_data
-        const paqueteDataJson = {
+        const paqueteDataJson: any = {
             titulo: paqueteData?.titulo || nombre_cotizacion || '',
             destino: paqueteData?.destino || destino_principal,
             descripcion: paqueteData?.descripcion || '',
@@ -983,12 +1011,24 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
             itinerario: paqueteItinerario,
             vuelos: paqueteData?.vuelos || [],
             // Desglose de precios
-            precio_vuelos: precios.vuelos || 0,
-            precio_hospedajes: precios.hospedajes || 0,
-            precio_extras: precios.extras || 0,
-            precio_subtotal: precios.subtotal || precios.total || 0,
-            precio_impuestos: precios.impuestos || 0
+            precio_vuelos: precios?.vuelos || 0,
+            precio_hospedajes: precios?.hospedajes || precioCalculado,
+            precio_extras: precios?.extras || 0,
+            precio_subtotal: precios?.subtotal || precioCalculado,
+            precio_impuestos: precios?.impuestos || 0
         };
+        
+        // Agregar hotel seleccionado al paquete_data
+        if (hotelSeleccionado) {
+            paqueteDataJson.hotel_seleccionado = {
+                id: hotelSeleccionado.id,
+                nombre: hotelSeleccionado.nombre,
+                link: hotelSeleccionado.link,
+                ciudad: hotelSeleccionado.ciudad,
+                tipo_habitacion: habitacionTipo,
+                precio_por_persona: hotelSeleccionado.precios?.[habitacionTipo] || hotelSeleccionado.precios?.doble || 0
+            };
+        }
 
         const { data: cotizacion, error: cotizacionError } = await supabase
             .from('cotizaciones')
@@ -1003,9 +1043,10 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                 nombre_cotizacion: nombre_cotizacion || `Viaje a ${destino_principal || 'Destino'}`,
                 tipo_cotizacion: tipo_cotizacion || (paquete_id ? 'paquete' : 'manual'),
                 origen_datos: origen_datos || (paquete_id ? 'paquete' : 'manual'),
-                precio_total: parseFloat(precios.total) || 0,
-                precio_moneda: precios.moneda || 'USD',
-                comision_vendedor: (parseFloat(precios.total) || 0) * 0.12,
+                precio_total: precioCalculado,
+                precio_moneda: precios?.moneda || 'USD',
+                comision_vendedor: precioCalculado * 0.12,
+                tipo_habitacion: habitacionTipo,
                 paquete_data: paqueteDataJson,
                 itinerario: paqueteItinerario,
                 notas: paquete_id 
