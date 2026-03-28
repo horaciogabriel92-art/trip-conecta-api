@@ -610,7 +610,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
 export const deleteCotizacion = async (req: Request, res: Response) => {
     const { id } = req.params;
     const vendedor_id = (req as any).user.userId;
-    const userRole = (req as any).user.rol;
+    const userRole = (req as any).user.role;
 
     try {
         // Verificar que la cotización existe
@@ -712,6 +712,40 @@ export const enviarCotizacion = async (req: Request, res: Response) => {
         
     } catch (error: any) {
         console.error('Error enviando cotización:', error);
+        res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+};
+
+// ============================================
+// MIGRACIÓN TEMPORAL - Solo para admin
+// ============================================
+
+export const runMigration = async (req: Request, res: Response) => {
+    const user = (req as any).user;
+    
+    if (user.role !== 'admin') {
+        return res.status(403).json({ error: 'Solo administradores pueden ejecutar migraciones' });
+    }
+    
+    try {
+        // Ejecutar la migración SQL
+        const { error } = await supabase.rpc('exec_sql', {
+            sql: `
+                ALTER TABLE cotizaciones ADD COLUMN IF NOT EXISTS fecha_envio TIMESTAMP WITH TIME ZONE;
+                ALTER TABLE cotizaciones DROP CONSTRAINT IF EXISTS cotizaciones_estado_check;
+                ALTER TABLE cotizaciones ADD CONSTRAINT cotizaciones_estado_check 
+                    CHECK (estado IN ('pendiente', 'respondida', 'convertida', 'vencida', 'cancelada'));
+            `
+        });
+        
+        if (error) {
+            console.error('Error en migración:', error);
+            return res.status(500).json({ error: 'Error en migración', details: error });
+        }
+        
+        res.json({ message: 'Migración ejecutada exitosamente' });
+    } catch (error: any) {
+        console.error('Error ejecutando migración:', error);
         res.status(500).json({ error: 'Internal server error', details: error.message });
     }
 };
