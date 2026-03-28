@@ -172,9 +172,19 @@ export const getCotizacionById = async (req: Request, res: Response) => {
     const user = (req as any).user;
     
     try {
+        // Query con todas las relaciones del nuevo schema CRM
         let query = supabase
             .from('cotizaciones')
-            .select('*')
+            .select(`
+                *,
+                cliente:cliente_id (*),
+                pasajeros:cotizacion_pasajeros (
+                    *,
+                    pasajero:pasajero_id (*)
+                ),
+                vuelos (*),
+                hospedajes (*)
+            `)
             .eq('id', id);
         
         if (user.role !== 'admin') {
