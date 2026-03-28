@@ -32,7 +32,7 @@ export const createCotizacion = async (req: Request, res: Response) => {
         }
 
         // ========== PASO 2: BUSCAR O CREAR CLIENTE ==========
-        let clienteId: string;
+        let clienteId: string | undefined;
         
         // Buscar cliente por email o documento
         if (cliente_email) {
