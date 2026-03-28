@@ -1042,7 +1042,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                 fecha_expiracion: fecha_expiracion.toISOString(),
                 nombre_cotizacion: nombre_cotizacion || `Viaje a ${destino_principal || 'Destino'}`,
                 tipo_cotizacion: tipo_cotizacion || (paquete_id ? 'paquete' : 'manual'),
-                origen_datos: origen_datos || (paquete_id ? 'paquete' : 'manual'),
+                origen_datos: origen_datos || 'manual',
                 precio_total: precioCalculado,
                 precio_moneda: precios?.moneda || 'USD',
                 comision_vendedor: precioCalculado * 0.12,
