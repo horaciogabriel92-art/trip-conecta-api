@@ -415,11 +415,20 @@ export const getCotizacionById = async (req: Request, res: Response) => {
             } catch (e) { console.log('Error cargando paquete:', e); }
         }
         
+        // Mapear vuelos para compatibilidad de campos (origen_nombre -> origen_ciudad, etc.)
+        const vuelosMapeados = vuelos.map((v: any) => ({
+            ...v,
+            origen_ciudad: v.origen_ciudad || v.origen_nombre || v.origen,
+            destino_ciudad: v.destino_ciudad || v.destino_nombre || v.destino,
+            aerolinea_nombre: v.aerolinea_nombre || v.aerolinea,
+            aerolinea_codigo: v.aerolinea_codigo || v.aerolinea?.substring(0, 2)?.toUpperCase() || 'AV'
+        }));
+
         // Compatibilidad con datos legacy
         const resultado = {
             ...cotizacion,
             pasajeros,
-            vuelos,
+            vuelos: vuelosMapeados,
             hospedajes,
             paquete,
             // Campos legacy para compatibilidad
@@ -866,7 +875,25 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
             }
         }
 
-        // 2.2: Crear pasajeros nuevos
+        // 2.2: SIEMPRE buscar y agregar el pasajero titular del cliente PRIMERO
+        const { data: pasajeroTitular } = await supabase
+            .from('pasajeros')
+            .select('*')
+            .eq('cliente_titular_id', clienteFinalId)
+            .eq('es_cliente_registrado', true)
+            .single();
+        
+        if (pasajeroTitular) {
+            pasajerosVinculados.push({
+                pasajero_id: pasajeroTitular.id,
+                es_titular: true,
+                nombre_snapshot: pasajeroTitular.nombre,
+                apellido_snapshot: pasajeroTitular.apellido,
+                documento_snapshot: pasajeroTitular.documento
+            });
+        }
+
+        // 2.3: Crear pasajeros nuevos (acompañantes)
         if (pasajeros_nuevos && pasajeros_nuevos.length > 0) {
             for (const p of pasajeros_nuevos) {
                 const { data: nuevoPasajero, error: pasajeroError } = await supabase
@@ -895,27 +922,6 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                     nombre_snapshot: nuevoPasajero.nombre,
                     apellido_snapshot: nuevoPasajero.apellido,
                     documento_snapshot: nuevoPasajero.documento
-                });
-            }
-        }
-
-        // Si no hay pasajeros vinculados, usar el cliente como pasajero titular
-        if (pasajerosVinculados.length === 0) {
-            // Buscar o crear pasajero titular del cliente
-            const { data: pasajeroTitular } = await supabase
-                .from('pasajeros')
-                .select('*')
-                .eq('cliente_titular_id', clienteFinalId)
-                .eq('es_cliente_registrado', true)
-                .single();
-            
-            if (pasajeroTitular) {
-                pasajerosVinculados.push({
-                    pasajero_id: pasajeroTitular.id,
-                    es_titular: true,
-                    nombre_snapshot: pasajeroTitular.nombre,
-                    apellido_snapshot: pasajeroTitular.apellido,
-                    documento_snapshot: pasajeroTitular.documento
                 });
             }
         }
