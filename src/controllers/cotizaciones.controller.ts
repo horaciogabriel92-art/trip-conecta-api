@@ -7,6 +7,7 @@ export const createCotizacion = async (req: Request, res: Response) => {
         cliente_nombre, 
         cliente_email, 
         cliente_telefono,
+        cliente_documento,
         tipo_habitacion,
         num_pasajeros,
         fecha_salida,
@@ -16,10 +17,10 @@ export const createCotizacion = async (req: Request, res: Response) => {
     } = req.body;
     const vendedor_id = (req as any).user.userId;
 
-    console.log('Creating cotizacion with data:', req.body);
+    console.log('[createCotizacion] Data:', req.body);
 
     try {
-        // Obtener paquete para verificar
+        // ========== PASO 1: OBTENER PAQUETE ==========
         const { data: paquete, error: paqueteError } = await supabase
             .from('paquetes')
             .select('*')
@@ -30,119 +31,196 @@ export const createCotizacion = async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Paquete no encontrado' });
         }
 
-        // Usar precio enviado desde frontend o calcular
-        const precio_total = precio_enviado || paquete.precio_base * num_pasajeros;
+        // ========== PASO 2: BUSCAR O CREAR CLIENTE ==========
+        let clienteId: string;
         
-        // Generar código único
+        // Buscar cliente por email o documento
+        if (cliente_email) {
+            const { data: existenteEmail } = await supabase
+                .from('clientes')
+                .select('id')
+                .eq('email', cliente_email)
+                .single();
+            if (existenteEmail) clienteId = existenteEmail.id;
+        }
+        
+        if (!clienteId && cliente_documento) {
+            const { data: existenteDoc } = await supabase
+                .from('clientes')
+                .select('id')
+                .eq('documento', cliente_documento)
+                .single();
+            if (existenteDoc) clienteId = existenteDoc.id;
+        }
+        
+        // Si no existe, crear cliente nuevo
+        if (!clienteId) {
+            const { data: nuevoCliente, error: clienteError } = await supabase
+                .from('clientes')
+                .insert({
+                    nombre: cliente_nombre?.split(' ')[0] || 'Cliente',
+                    apellido: cliente_nombre?.split(' ').slice(1).join(' ') || '',
+                    email: cliente_email,
+                    telefono: cliente_telefono,
+                    documento: cliente_documento,
+                    registrado_por: vendedor_id
+                })
+                .select()
+                .single();
+            
+            if (clienteError) {
+                console.error('Error creando cliente:', clienteError);
+                return res.status(500).json({ error: 'Error al crear cliente' });
+            }
+            clienteId = nuevoCliente.id;
+            
+            // Crear pasajero titular automáticamente
+            await supabase.from('pasajeros').insert({
+                cliente_titular_id: clienteId,
+                cliente_id: clienteId,
+                es_cliente_registrado: true,
+                nombre: nuevoCliente.nombre,
+                apellido: nuevoCliente.apellido,
+                documento: cliente_documento
+            });
+        }
+
+        // ========== PASO 3: CREAR PASAJEROS ADICIONALES ==========
+        const pasajerosVinculados: any[] = [];
+        const numViajeros = num_pasajeros || 2; // Default 2 para base doble
+        
+        // Pasajero 1: Titular (el cliente)
+        const { data: pasajeroTitular } = await supabase
+            .from('pasajeros')
+            .select('*')
+            .eq('cliente_titular_id', clienteId)
+            .eq('es_cliente_registrado', true)
+            .single();
+        
+        if (pasajeroTitular) {
+            pasajerosVinculados.push({
+                pasajero_id: pasajeroTitular.id,
+                es_titular: true,
+                nombre_snapshot: pasajeroTitular.nombre,
+                apellido_snapshot: pasajeroTitular.apellido,
+                documento_snapshot: pasajeroTitular.documento,
+                tipo_habitacion: tipo_habitacion || 'doble'
+            });
+        }
+        
+        // Pasajeros 2+: Acompañantes (crear genéricos si no hay datos)
+        for (let i = 1; i < numViajeros; i++) {
+            const { data: acompanante } = await supabase
+                .from('pasajeros')
+                .insert({
+                    cliente_titular_id: clienteId,
+                    nombre: `Acompañante ${i}`,
+                    apellido: 'Viaje'
+                })
+                .select()
+                .single();
+            
+            if (acompanante) {
+                pasajerosVinculados.push({
+                    pasajero_id: acompanante.id,
+                    es_titular: false,
+                    nombre_snapshot: acompanante.nombre,
+                    apellido_snapshot: acompanante.apellido,
+                    tipo_habitacion: tipo_habitacion || 'doble'
+                });
+            }
+        }
+
+        // ========== PASO 4: PREPARAR DATOS COTIZACIÓN ==========
+        const precio_total = precio_enviado || paquete.precio_base * numViajeros;
         const year = new Date().getFullYear();
         const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
         const codigo = `COT-${year}-${random}`;
-
-        // Calcular fecha de expiración (7 días)
         const fecha_expiracion = new Date();
         fecha_expiracion.setDate(fecha_expiracion.getDate() + 7);
 
-        // Preparar datos del paquete como objeto para guardar en notas
+        // Preparar paquete_data con TODO el contenido
         const paqueteData: any = {
             titulo: paquete.titulo,
             destino: paquete.destino,
             descripcion: paquete.descripcion || '',
             duracion_dias: paquete.duracion_dias,
             imagen_principal: paquete.imagen_principal,
-            politicas_cancelacion: paquete.politicas_cancelacion
+            politicas_cancelacion: paquete.politicas_cancelacion,
+            incluye: paquete.incluye || [],
+            no_incluye: paquete.no_incluye || [],
+            vuelos: paquete.vuelos || []
         };
         
-        // Manejar itinerario: puede ser objeto {texto, dias} o string/array legacy
+        // Itinerario
         if (paquete.itinerario) {
             if (typeof paquete.itinerario === 'object' && paquete.itinerario.texto !== undefined) {
-                // Nuevo formato: { texto: string, dias: array }
                 paqueteData.itinerario = paquete.itinerario;
             } else if (Array.isArray(paquete.itinerario)) {
-                // Formato legacy array -> convertir a nuevo formato
                 paqueteData.itinerario = { texto: '', dias: paquete.itinerario };
             } else if (typeof paquete.itinerario === 'string') {
-                // String -> convertir a objeto
                 paqueteData.itinerario = { texto: paquete.itinerario, dias: [] };
-            } else {
-                paqueteData.itinerario = paquete.itinerario;
-            }
-        } else if (paquete.descripcion && paquete.descripcion.trim()) {
-            // Fallback a descripcion si no hay itinerario
-            paqueteData.itinerario = { texto: paquete.descripcion, dias: [] };
-        }
-        
-        // Parsear y guardar incluye
-        if (paquete.incluye) {
-            try {
-                paqueteData.incluye = typeof paquete.incluye === 'string' 
-                    ? JSON.parse(paquete.incluye) 
-                    : paquete.incluye;
-            } catch (e) {
-                paqueteData.incluye = [];
             }
         }
-        
-        // Parsear y guardar no_incluye
-        if (paquete.no_incluye) {
-            try {
-                paqueteData.no_incluye = typeof paquete.no_incluye === 'string' 
-                    ? JSON.parse(paquete.no_incluye) 
-                    : paquete.no_incluye;
-            } catch (e) {
-                paqueteData.no_incluye = [];
-            }
-        }
-        
-        // Preparar notas extendidas
-        let notasExtendidas = notas || '';
-        notasExtendidas += '\n\n--- PAQUETE JSON ---\n' + JSON.stringify(paqueteData, null, 2);
-        
-        // También guardar datos completos del cliente
-        if (datos_completos) {
-            notasExtendidas += '\n\n--- DATOS COMPLETOS ---\n' + JSON.stringify(datos_completos, null, 2);
-        }
 
-        const insertData: any = {
-            codigo,
-            vendedor_id,
-            paquete_id,
-            cliente_nombre,
-            cliente_email,
-            cliente_telefono,
-            tipo_habitacion,
-            num_pasajeros,
-            fecha_salida: fecha_salida || null,
-            precio_total,
-            comision_vendedor: precio_total * 0.12, // 12% comisión
-            notas: notasExtendidas,
-            fecha_expiracion: fecha_expiracion.toISOString(),
-            estado: 'pendiente'
-        };
-
-        console.log('Inserting cotizacion:', insertData);
-
+        // ========== PASO 5: CREAR COTIZACIÓN ==========
         const { data: cotizacion, error } = await supabase
             .from('cotizaciones')
-            .insert(insertData)
+            .insert({
+                codigo,
+                vendedor_id,
+                paquete_id,
+                cliente_id: clienteId,
+                cliente_nombre,
+                cliente_email,
+                cliente_telefono,
+                tipo_habitacion: tipo_habitacion || 'doble',
+                num_pasajeros: numViajeros,
+                fecha_salida: fecha_salida || null,
+                precio_total,
+                precio_moneda: 'USD',
+                comision_vendedor: precio_total * 0.12,
+                paquete_data: paqueteData,
+                itinerario: paqueteData.itinerario,
+                destino_principal: paquete.destino,
+                estado: 'pendiente',
+                fecha_expiracion: fecha_expiracion.toISOString()
+            })
             .select()
             .single();
 
-        if (error) {
-            console.error('Supabase error:', error);
-            return res.status(400).json({ 
-                error: 'Error al crear cotización', 
-                details: error.message,
-                code: error.code 
+        if (error || !cotizacion) {
+            console.error('Error creando cotizacion:', error);
+            return res.status(500).json({ error: 'Error al crear cotización' });
+        }
+
+        // ========== PASO 6: VINCULAR PASAJEROS ==========
+        for (const pv of pasajerosVinculados) {
+            await supabase.from('cotizacion_pasajeros').insert({
+                cotizacion_id: cotizacion.id,
+                pasajero_id: pv.pasajero_id,
+                es_titular: pv.es_titular,
+                nombre_snapshot: pv.nombre_snapshot,
+                apellido_snapshot: pv.apellido_snapshot,
+                documento_snapshot: pv.documento_snapshot,
+                tipo_habitacion: pv.tipo_habitacion
             });
         }
 
+        // ========== PASO 7: REGISTRAR EN HISTORIAL ==========
+        await supabase.from('historial_cliente').insert({
+            cliente_id: clienteId,
+            tipo: 'cotizacion_creada',
+            cotizacion_id: cotizacion.id,
+            descripcion: `Cotización ${codigo} creada para ${paquete.destino}`,
+            realizado_por: vendedor_id,
+            realizado_por_nombre: (req as any).user.nombre || 'Vendedor'
+        });
+
         res.status(201).json(cotizacion);
     } catch (error: any) {
-        console.error('Error creating quote:', error);
-        res.status(500).json({ 
-            error: 'Internal server error',
-            details: error.message 
-        });
+        console.error('[createCotizacion] Error:', error);
+        res.status(500).json({ error: 'Internal server error', details: error.message });
     }
 };
 
