@@ -171,6 +171,9 @@ export const getCotizacionById = async (req: Request, res: Response) => {
     const { id } = req.params;
     const user = (req as any).user;
     
+    console.log('[getCotizacionById] User:', { userId: user?.userId, role: user?.role });
+    console.log('[getCotizacionById] Cotizacion ID:', id);
+    
     try {
         // Query con todas las relaciones del nuevo schema CRM
         let query = supabase
@@ -188,10 +191,13 @@ export const getCotizacionById = async (req: Request, res: Response) => {
             .eq('id', id);
         
         if (user.role !== 'admin') {
+            console.log('[getCotizacionById] Filtrando por vendedor_id:', user.userId);
             query = query.eq('vendedor_id', user.userId);
         }
 
         const { data: cotizacion, error } = await query.single();
+        
+        console.log('[getCotizacionById] Result:', { found: !!cotizacion, error: error?.message });
 
         if (error || !cotizacion) {
             return res.status(404).json({ error: 'Cotización no encontrada' });
@@ -720,7 +726,13 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                 paquete_data: {
                     incluye: incluye || [],
                     no_incluye: no_incluye || [],
-                    politicas_cancelacion: politicas_cancelacion || ''
+                    politicas_cancelacion: politicas_cancelacion || '',
+                    // Desglose de precios
+                    precio_vuelos: precios.vuelos || 0,
+                    precio_hospedajes: precios.hospedajes || 0,
+                    precio_extras: precios.extras || 0,
+                    precio_subtotal: precios.subtotal || precios.total || 0,
+                    precio_impuestos: precios.impuestos || 0
                 },
                 itinerario: itinerario || null,
                 notas: `Cotización manual creada desde cero. Destino: ${destino_principal}`,
