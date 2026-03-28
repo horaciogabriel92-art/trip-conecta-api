@@ -175,6 +175,19 @@ export const getCotizacionById = async (req: Request, res: Response) => {
     console.log('[getCotizacionById] Cotizacion ID:', id);
     
     try {
+        // Primero verificar si la cotización existe sin filtros
+        const { data: cotizacionRaw, error: rawError } = await supabase
+            .from('cotizaciones')
+            .select('id, codigo, vendedor_id, estado, fecha_creacion')
+            .eq('id', id)
+            .single();
+        
+        console.log('[getCotizacionById] Raw query result:', { 
+            found: !!cotizacionRaw, 
+            error: rawError?.message,
+            data: cotizacionRaw 
+        });
+        
         // Query con todas las relaciones del nuevo schema CRM
         let query = supabase
             .from('cotizaciones')
@@ -197,10 +210,23 @@ export const getCotizacionById = async (req: Request, res: Response) => {
 
         const { data: cotizacion, error } = await query.single();
         
-        console.log('[getCotizacionById] Result:', { found: !!cotizacion, error: error?.message });
+        console.log('[getCotizacionById] Full query result:', { 
+            found: !!cotizacion, 
+            error: error?.message,
+            errorDetails: error
+        });
 
         if (error || !cotizacion) {
-            return res.status(404).json({ error: 'Cotización no encontrada' });
+            return res.status(404).json({ 
+                error: 'Cotización no encontrada',
+                debug: {
+                    id,
+                    userId: user?.userId,
+                    role: user?.role,
+                    rawFound: !!cotizacionRaw,
+                    rawData: cotizacionRaw
+                }
+            });
         }
 
         res.json(cotizacion);
