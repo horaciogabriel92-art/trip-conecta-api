@@ -1046,7 +1046,6 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                 precio_total: precioCalculado,
                 precio_moneda: precios?.moneda || 'USD',
                 comision_vendedor: precioCalculado * 0.12,
-                tipo_habitacion: habitacionTipo,
                 paquete_data: paqueteDataJson,
                 itinerario: paqueteItinerario,
                 notas: paquete_id 
