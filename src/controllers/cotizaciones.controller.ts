@@ -480,126 +480,361 @@ export const rechazarCotizacion = async (req: Request, res: Response) => {
 
 
 // ============================================
-// NUEVA COTIZACIÓN MANUAL (DESDE CERO)
+// NUEVA COTIZACIÓN MANUAL (DESDE CERO) - CRM v2
 // ============================================
 
 // Endpoint: POST /api/cotizaciones/manual
 export const createCotizacionManual = async (req: Request, res: Response) => {
     try {
-    const { 
-        cliente,
-        pasajeros,
-        nombre_cotizacion,
-        vendedor_id: vendedor_id_body,
-        vuelos,
-        hospedaje,
-        itinerario_manual,
-        incluye,
-        no_incluye,
-        politicas_cancelacion,
-        precios,
-        origen_datos,
-        amadeus_pnr_raw
-    } = req.body;
+        const { 
+            cliente_id,           // Si existe cliente
+            cliente_nuevo,        // Si hay que crear cliente { nombre, apellido, email, documento, ... }
+            pasajeros_ids,        // IDs de pasajeros existentes [id1, id2]
+            pasajeros_nuevos,     // Nuevos pasajeros [{ nombre, apellido, documento, ... }]
+            pasajero_titular_id,  // ID del pasajero titular (debe estar en pasajeros_ids o ser creado)
+            nombre_cotizacion,
+            vendedor_id: vendedor_id_body,
+            vuelos,
+            hospedajes,
+            itinerario,
+            incluye,
+            no_incluye,
+            politicas_cancelacion,
+            precios,
+            origen_datos,
+            amadeus_pnr_raw
+        } = req.body;
 
-    const user = (req as any).user;
-    // Si es admin y se envía vendedor_id en el body, usar ese. Si no, usar el del token.
-    const vendedor_id = (user.role === 'admin' && vendedor_id_body) 
-        ? vendedor_id_body 
-        : user.userId;
+        const user = (req as any).user;
+        const vendedor_id = (user.role === 'admin' && vendedor_id_body) 
+            ? vendedor_id_body 
+            : user.userId;
 
-    // Validación de campos requeridos
-    if (!cliente || !cliente.nombre || !cliente.apellido) {
-        return res.status(400).json({ error: 'Datos del cliente incompletos' });
-    }
+        // ========== VALIDACIONES ==========
+        if (!cliente_id && !cliente_nuevo) {
+            return res.status(400).json({ error: 'Debe proporcionar cliente_id o datos de cliente_nuevo' });
+        }
 
-    if (!precios || precios.total === undefined || precios.total === '') {
-        return res.status(400).json({ error: 'Precio total es requerido' });
-    }
+        if (!precios || !precios.total) {
+            return res.status(400).json({ error: 'Precio total es requerido' });
+        }
 
-    console.log('Creating manual cotizacion:', { 
-        cliente: `${cliente.nombre} ${cliente.apellido}`, 
-        vuelos: vuelos?.length, 
-        hospedaje: hospedaje?.length,
-        precio: precios?.total 
-    });
+        // ========== PASO 1: BUSCAR O CREAR CLIENTE ==========
+        let clienteFinalId: string;
+        let clienteData: any = null;
 
-    // Generar código único
-    const year = new Date().getFullYear();
-    const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
-    const codigo = `COT-${year}-${random}`;
+        if (cliente_id) {
+            // Usar cliente existente
+            const { data: clienteExistente, error: clienteError } = await supabase
+                .from('clientes')
+                .select('*')
+                .eq('id', cliente_id)
+                .single();
+            
+            if (clienteError || !clienteExistente) {
+                return res.status(404).json({ error: 'Cliente no encontrado' });
+            }
+            
+            clienteFinalId = cliente_id;
+            clienteData = clienteExistente;
+        } else {
+            // Crear nuevo cliente
+            const { data: nuevoCliente, error: createError } = await supabase
+                .from('clientes')
+                .insert({
+                    tipo_documento: cliente_nuevo.tipo_documento || 'CI',
+                    documento: cliente_nuevo.documento,
+                    nombre: cliente_nuevo.nombre,
+                    apellido: cliente_nuevo.apellido,
+                    email: cliente_nuevo.email,
+                    telefono: cliente_nuevo.telefono,
+                    telefono_alt: cliente_nuevo.telefono_alt,
+                    fecha_nacimiento: cliente_nuevo.fecha_nacimiento,
+                    nacionalidad: cliente_nuevo.nacionalidad || 'Uruguay',
+                    registrado_por: vendedor_id
+                })
+                .select()
+                .single();
+            
+            if (createError || !nuevoCliente) {
+                console.error('Error creating cliente:', createError);
+                return res.status(500).json({ error: 'Error al crear cliente', details: createError });
+            }
+            
+            clienteFinalId = nuevoCliente.id;
+            clienteData = nuevoCliente;
+            
+            // Crear pasajero titular automáticamente para el nuevo cliente
+            const { data: pasajeroTitular, error: pasajeroError } = await supabase
+                .from('pasajeros')
+                .insert({
+                    cliente_titular_id: nuevoCliente.id,
+                    tipo_documento: cliente_nuevo.tipo_documento || 'CI',
+                    documento: cliente_nuevo.documento,
+                    nombre: cliente_nuevo.nombre,
+                    apellido: cliente_nuevo.apellido,
+                    fecha_nacimiento: cliente_nuevo.fecha_nacimiento,
+                    nacionalidad: cliente_nuevo.nacionalidad || 'Uruguay',
+                    es_cliente_registrado: true,
+                    cliente_id: nuevoCliente.id
+                })
+                .select()
+                .single();
+            
+            if (pasajeroError) {
+                console.error('Error creating pasajero titular:', pasajeroError);
+            }
+        }
 
-    // Calcular fecha de expiración (7 días)
-    const fecha_expiracion = new Date();
-    fecha_expiracion.setDate(fecha_expiracion.getDate() + 7);
+        // ========== PASO 2: MANEJAR PASAJEROS ==========
+        const pasajerosVinculados: Array<{
+            pasajero_id: string;
+            es_titular: boolean;
+            nombre_snapshot: string;
+            apellido_snapshot: string;
+            documento_snapshot: string;
+            tipo_habitacion?: string;
+            regimen?: string;
+            precio_individual?: number;
+        }> = [];
 
-    // Preparar datos_completos unificado
-    // Combinar cliente (titular) + pasajeros adicionales en un solo array
-    const todosLosPasajeros = [
-        { ...cliente, es_titular: true },
-        ...(pasajeros || [])
-    ];
-    
-    const datosCompletos = {
-        cliente,
-        pasajeros: todosLosPasajeros,
-        num_pasajeros: todosLosPasajeros.length
-    };
+        // 2.1: Procesar pasajeros existentes
+        if (pasajeros_ids && pasajeros_ids.length > 0) {
+            const { data: pasajerosExistentes, error: pasajerosError } = await supabase
+                .from('pasajeros')
+                .select('*')
+                .in('id', pasajeros_ids);
+            
+            if (pasajerosError) {
+                console.error('Error fetching pasajeros:', pasajerosError);
+            } else if (pasajerosExistentes) {
+                for (const p of pasajerosExistentes) {
+                    pasajerosVinculados.push({
+                        pasajero_id: p.id,
+                        es_titular: p.id === pasajero_titular_id,
+                        nombre_snapshot: p.nombre,
+                        apellido_snapshot: p.apellido,
+                        documento_snapshot: p.documento
+                    });
+                }
+            }
+        }
 
-    // Determinar destino principal (primera ciudad de hospedaje o destino de primer vuelo)
-    let destino_principal = '';
-    if (hospedaje && hospedaje.length > 0) {
-        destino_principal = hospedaje[0].ciudad;
-    } else if (vuelos && vuelos.length > 0) {
-        destino_principal = vuelos[vuelos.length - 1].destino_ciudad;
-    }
+        // 2.2: Crear pasajeros nuevos
+        if (pasajeros_nuevos && pasajeros_nuevos.length > 0) {
+            for (const p of pasajeros_nuevos) {
+                const { data: nuevoPasajero, error: pasajeroError } = await supabase
+                    .from('pasajeros')
+                    .insert({
+                        cliente_titular_id: clienteFinalId,
+                        tipo_documento: p.tipo_documento || 'CI',
+                        documento: p.documento,
+                        nombre: p.nombre,
+                        apellido: p.apellido,
+                        fecha_nacimiento: p.fecha_nacimiento,
+                        nacionalidad: p.nacionalidad || 'Uruguay',
+                        es_cliente_registrado: false
+                    })
+                    .select()
+                    .single();
+                
+                if (pasajeroError || !nuevoPasajero) {
+                    console.error('Error creating pasajero:', pasajeroError);
+                    continue;
+                }
+                
+                pasajerosVinculados.push({
+                    pasajero_id: nuevoPasajero.id,
+                    es_titular: false,
+                    nombre_snapshot: nuevoPasajero.nombre,
+                    apellido_snapshot: nuevoPasajero.apellido,
+                    documento_snapshot: nuevoPasajero.documento
+                });
+            }
+        }
 
-    // Construir nombre del cliente
-    const cliente_nombre = `${cliente.nombre} ${cliente.apellido}`;
+        // Si no hay pasajeros vinculados, usar el cliente como pasajero titular
+        if (pasajerosVinculados.length === 0) {
+            // Buscar o crear pasajero titular del cliente
+            const { data: pasajeroTitular } = await supabase
+                .from('pasajeros')
+                .select('*')
+                .eq('cliente_titular_id', clienteFinalId)
+                .eq('es_cliente_registrado', true)
+                .single();
+            
+            if (pasajeroTitular) {
+                pasajerosVinculados.push({
+                    pasajero_id: pasajeroTitular.id,
+                    es_titular: true,
+                    nombre_snapshot: pasajeroTitular.nombre,
+                    apellido_snapshot: pasajeroTitular.apellido,
+                    documento_snapshot: pasajeroTitular.documento
+                });
+            }
+        }
 
-    // Insertar cotización
-    const insertData = {
-        codigo,
-        vendedor_id,
-        paquete_id: null,
-        cliente_nombre,
-        cliente_email: cliente.email,
-        cliente_telefono: cliente.telefono,
-        tipo_habitacion: hospedaje?.[0]?.tipo_habitacion || 'doble',
-        num_pasajeros: datosCompletos.num_pasajeros,
-        fecha_salida: vuelos?.[0]?.fecha_salida || null,
-        precio_total: parseFloat(precios?.total) || 0,
-        comision_vendedor: (parseFloat(precios?.total) || 0) * 0.12,
-        notas: `Cotización manual creada desde cero. Destino: ${destino_principal}`,
-        tipo_cotizacion: 'manual',
-        nombre_cotizacion: nombre_cotizacion || `Cotización Manual - ${destino_principal}`,
-        vuelos: vuelos || [],
-        hospedaje: hospedaje || [],
-        datos_completos: datosCompletos,
-        incluye: incluye || [],
-        no_incluye: no_incluye || [],
-        itinerario_manual: itinerario_manual || '',
-        fecha_expiracion: fecha_expiracion.toISOString(),
-        estado: 'pendiente',
-        origen_datos: origen_datos || 'manual',
-        amadeus_pnr_raw: amadeus_pnr_raw || null
-    };
+        // ========== PASO 3: CREAR COTIZACIÓN ==========
+        const year = new Date().getFullYear();
+        const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
+        const codigo = `COT-${year}-${random}`;
 
-    const { data: cotizacion, error } = await supabase
-        .from('cotizaciones')
-        .insert(insertData)
-        .select()
-        .single();
+        const fecha_expiracion = new Date();
+        fecha_expiracion.setDate(fecha_expiracion.getDate() + 7);
 
-    if (error) {
-        console.error('Error creating manual cotizacion:', error);
-        return res.status(500).json({ error: 'Error al crear cotización', details: error.message });
-    }
+        // Determinar destino principal
+        let destino_principal = '';
+        if (hospedajes && hospedajes.length > 0) {
+            destino_principal = hospedajes[0].ciudad;
+        } else if (vuelos && vuelos.length > 0) {
+            const vueloDestino = vuelos.find((v: any) => v.tipo_trayecto === 'ida' || !v.tipo_trayecto);
+            destino_principal = vueloDestino?.destino_ciudad || vuelos[0].destino_ciudad;
+        }
 
-    res.status(201).json({
-        message: 'Cotización manual creada exitosamente',
-        cotizacion
-    });
+        const { data: cotizacion, error: cotizacionError } = await supabase
+            .from('cotizaciones')
+            .insert({
+                codigo,
+                cliente_id: clienteFinalId,
+                vendedor_id,
+                paquete_id: null,
+                estado: 'pendiente',
+                fecha_creacion: new Date().toISOString(),
+                fecha_expiracion: fecha_expiracion.toISOString(),
+                nombre_cotizacion: nombre_cotizacion || `Viaje a ${destino_principal || 'Destino'}`,
+                tipo_cotizacion: 'manual',
+                origen_datos: origen_datos || 'manual',
+                precio_total: parseFloat(precios.total) || 0,
+                precio_moneda: precios.moneda || 'USD',
+                comision_vendedor: (parseFloat(precios.total) || 0) * 0.12,
+                paquete_data: {
+                    incluye: incluye || [],
+                    no_incluye: no_incluye || [],
+                    politicas_cancelacion: politicas_cancelacion || ''
+                },
+                itinerario: itinerario || null,
+                notas: `Cotización manual creada desde cero. Destino: ${destino_principal}`,
+                destino_principal,
+                num_pasajeros: pasajerosVinculados.length
+            })
+            .select()
+            .single();
+
+        if (cotizacionError || !cotizacion) {
+            console.error('Error creating cotizacion:', cotizacionError);
+            return res.status(500).json({ error: 'Error al crear cotización', details: cotizacionError });
+        }
+
+        // ========== PASO 4: GUARDAR VUELOS ==========
+        if (vuelos && vuelos.length > 0) {
+            const vuelosInsert = vuelos.map((v: any, index: number) => ({
+                cotizacion_id: cotizacion.id,
+                tipo_trayecto: v.tipo_trayecto || 'ida',
+                orden: index + 1,
+                aerolinea_codigo: v.aerolinea_codigo,
+                aerolinea_nombre: v.aerolinea_nombre,
+                numero_vuelo: v.numero_vuelo,
+                origen_codigo: v.origen_codigo,
+                origen_nombre: v.origen_nombre,
+                origen_terminal: v.origen_terminal,
+                destino_codigo: v.destino_codigo,
+                destino_nombre: v.destino_nombre,
+                destino_terminal: v.destino_terminal,
+                fecha_salida: v.fecha_salida,
+                hora_salida: v.hora_salida,
+                fecha_llegada: v.fecha_llegada,
+                hora_llegada: v.hora_llegada,
+                clase_codigo: v.clase_codigo,
+                clase_nombre: v.clase_nombre,
+                duracion_minutos: v.duracion_minutos,
+                es_escala: v.es_escala || false,
+                datos_completos: v
+            }));
+
+            const { error: vuelosError } = await supabase
+                .from('vuelos')
+                .insert(vuelosInsert);
+
+            if (vuelosError) {
+                console.error('Error creating vuelos:', vuelosError);
+            }
+        }
+
+        // ========== PASO 5: GUARDAR HOSPEDAJES ==========
+        if (hospedajes && hospedajes.length > 0) {
+            const hospedajesInsert = hospedajes.map((h: any) => ({
+                cotizacion_id: cotizacion.id,
+                nombre_hotel: h.nombre_hotel,
+                link_hotel: h.link_hotel,
+                cadena_hotelera: h.cadena_hotelera,
+                ciudad: h.ciudad,
+                pais: h.pais,
+                direccion: h.direccion,
+                fecha_checkin: h.fecha_checkin,
+                fecha_checkout: h.fecha_checkout,
+                tipo_habitacion: h.tipo_habitacion,
+                regimen: h.regimen,
+                precio_noche: h.precio_noche,
+                precio_total: h.precio_total,
+                moneda: h.moneda || 'USD',
+                notas: h.notas
+            }));
+
+            const { error: hospedajesError } = await supabase
+                .from('hospedajes')
+                .insert(hospedajesInsert);
+
+            if (hospedajesError) {
+                console.error('Error creating hospedajes:', hospedajesError);
+            }
+        }
+
+        // ========== PASO 6: VINCULAR PASAJEROS A COTIZACIÓN ==========
+        if (pasajerosVinculados.length > 0) {
+            const pasajerosInsert = pasajerosVinculados.map((p: any) => ({
+                cotizacion_id: cotizacion.id,
+                pasajero_id: p.pasajero_id,
+                es_titular: p.es_titular,
+                nombre_snapshot: p.nombre_snapshot,
+                apellido_snapshot: p.apellido_snapshot,
+                documento_snapshot: p.documento_snapshot
+            }));
+
+            const { error: cpError } = await supabase
+                .from('cotizacion_pasajeros')
+                .insert(pasajerosInsert);
+
+            if (cpError) {
+                console.error('Error creating cotizacion_pasajeros:', cpError);
+            }
+        }
+
+        // ========== PASO 7: REGISTRAR EN HISTORIAL ==========
+        await supabase
+            .from('historial_cliente')
+            .insert({
+                cliente_id: clienteFinalId,
+                tipo: 'cotizacion_creada',
+                cotizacion_id: cotizacion.id,
+                descripcion: `Cotización ${codigo} creada para ${destino_principal || 'destino personalizado'}`,
+                realizado_por: vendedor_id,
+                realizado_por_nombre: user.nombre || user.email || 'Usuario'
+            });
+
+        // Actualizar fecha_ultima_interaccion del cliente
+        await supabase
+            .from('clientes')
+            .update({ fecha_ultima_interaccion: new Date().toISOString() })
+            .eq('id', clienteFinalId);
+
+        res.status(201).json({
+            message: 'Cotización creada exitosamente',
+            cotizacion: {
+                ...cotizacion,
+                cliente: clienteData,
+                pasajeros: pasajerosVinculados.length
+            }
+        });
 
     } catch (error: any) {
         console.error('Error creating manual quote:', error);
