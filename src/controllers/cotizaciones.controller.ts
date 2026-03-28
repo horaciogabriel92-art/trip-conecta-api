@@ -291,7 +291,9 @@ export const getCotizacionById = async (req: Request, res: Response) => {
         let pasajeros = [];
         let vuelos = [];
         let hospedajes = [];
+        let paquete = null;
         
+        // Cargar pasajeros
         try {
             const { data: p } = await supabase
                 .from('cotizacion_pasajeros')
@@ -300,6 +302,7 @@ export const getCotizacionById = async (req: Request, res: Response) => {
             pasajeros = p || [];
         } catch (e) { console.log('Error cargando pasajeros:', e); }
         
+        // Cargar vuelos desde tabla vuelos (cotizaciones manuales)
         try {
             const { data: v } = await supabase
                 .from('vuelos')
@@ -308,6 +311,7 @@ export const getCotizacionById = async (req: Request, res: Response) => {
             vuelos = v || [];
         } catch (e) { console.log('Error cargando vuelos:', e); }
         
+        // Cargar hospedajes
         try {
             const { data: h } = await supabase
                 .from('hospedajes')
@@ -316,12 +320,30 @@ export const getCotizacionById = async (req: Request, res: Response) => {
             hospedajes = h || [];
         } catch (e) { console.log('Error cargando hospedajes:', e); }
         
+        // Si es cotización de paquete, cargar datos del paquete (vuelos, itinerario, etc.)
+        if (cotizacion?.paquete_id) {
+            try {
+                const { data: p } = await supabase
+                    .from('paquetes')
+                    .select('*')
+                    .eq('id', cotizacion.paquete_id)
+                    .single();
+                paquete = p;
+                
+                // Si no hay vuelos en la tabla vuelos, usar los del paquete
+                if (vuelos.length === 0 && paquete?.vuelos) {
+                    vuelos = paquete.vuelos;
+                }
+            } catch (e) { console.log('Error cargando paquete:', e); }
+        }
+        
         // Compatibilidad con datos legacy
         const resultado = {
             ...cotizacion,
             pasajeros,
             vuelos,
             hospedajes,
+            paquete,
             // Campos legacy para compatibilidad
             cliente_nombre: cotizacion?.cliente 
                 ? `${cotizacion.cliente.nombre} ${cotizacion.cliente.apellido}`
