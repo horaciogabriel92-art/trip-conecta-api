@@ -149,7 +149,14 @@ export const createCotizacion = async (req: Request, res: Response) => {
 export const getCotizaciones = async (req: Request, res: Response) => {
     const user = (req as any).user;
     try {
-        let query = supabase.from('cotizaciones').select('*');
+        let query = supabase
+            .from('cotizaciones')
+            .select(`
+                *,
+                cliente:cliente_id (nombre, apellido),
+                vuelos:vuelos (id),
+                hospedajes:hospedajes (id)
+            `);
         
         // Si no es admin, solo ver las suyas
         if (user.role !== 'admin') {
@@ -159,8 +166,36 @@ export const getCotizaciones = async (req: Request, res: Response) => {
         const { data: cotizaciones, error } = await query
             .order('fecha_creacion', { ascending: false });
 
-        if (error) throw error;
-        res.json(cotizaciones);
+        if (error) {
+            console.error('Error fetching quotes:', error);
+            throw error;
+        }
+        
+        // Transformar datos para el frontend
+        const cotizacionesFormateadas = cotizaciones?.map((c: any) => {
+            // Determinar tipo_cotizacion
+            const tipoCotizacion = c.tipo_cotizacion || (c.paquete_id ? 'paquete' : 'manual');
+            
+            // Extraer nombre del cliente
+            const clienteNombre = c.cliente 
+                ? `${c.cliente.nombre} ${c.cliente.apellido}`
+                : c.cliente_nombre || 'Sin cliente';
+            
+            // Extraer nombre del paquete (para cotizaciones de paquete)
+            const paqueteNombre = c.nombre_cotizacion || c.paquete_nombre || 'Cotización';
+            
+            return {
+                ...c,
+                tipo_cotizacion: tipoCotizacion,
+                cliente_nombre: clienteNombre,
+                paquete_nombre: paqueteNombre,
+                vuelos: c.vuelos || [],
+                hospedaje: c.hospedajes || [],
+                num_pasajeros: c.num_pasajeros || 1
+            };
+        });
+        
+        res.json(cotizacionesFormateadas);
     } catch (error) {
         console.error('Error fetching quotes:', error);
         res.status(500).json({ error: 'Internal server error' });
@@ -175,61 +210,97 @@ export const getCotizacionById = async (req: Request, res: Response) => {
     console.log('[getCotizacionById] Cotizacion ID:', id);
     
     try {
-        // Primero verificar si la cotización existe sin filtros
-        const { data: cotizacionRaw, error: rawError } = await supabase
+        // Primero: consulta simple sin joins para verificar existencia y permisos
+        let basicQuery = supabase
             .from('cotizaciones')
-            .select('id, codigo, vendedor_id, estado, fecha_creacion')
-            .eq('id', id)
-            .single();
-        
-        console.log('[getCotizacionById] Raw query result:', { 
-            found: !!cotizacionRaw, 
-            error: rawError?.message,
-            data: cotizacionRaw 
-        });
-        
-        // Query con todas las relaciones del nuevo schema CRM
-        let query = supabase
-            .from('cotizaciones')
-            .select(`
-                *,
-                cliente:cliente_id (*),
-                pasajeros:cotizacion_pasajeros (
-                    *,
-                    pasajero:pasajero_id (*)
-                ),
-                vuelos (*),
-                hospedajes (*)
-            `)
+            .select('id, vendedor_id, estado')
             .eq('id', id);
         
         if (user.role !== 'admin') {
-            console.log('[getCotizacionById] Filtrando por vendedor_id:', user.userId);
-            query = query.eq('vendedor_id', user.userId);
+            basicQuery = basicQuery.eq('vendedor_id', user.userId);
         }
-
-        const { data: cotizacion, error } = await query.single();
         
-        console.log('[getCotizacionById] Full query result:', { 
-            found: !!cotizacion, 
-            error: error?.message,
-            errorDetails: error
-        });
-
-        if (error || !cotizacion) {
-            return res.status(404).json({ 
-                error: 'Cotización no encontrada',
-                debug: {
-                    id,
-                    userId: user?.userId,
-                    role: user?.role,
-                    rawFound: !!cotizacionRaw,
-                    rawData: cotizacionRaw
-                }
-            });
+        const { data: basicData, error: basicError } = await basicQuery.single();
+        
+        console.log('[getCotizacionById] Basic query:', { found: !!basicData, error: basicError?.message });
+        
+        if (basicError || !basicData) {
+            return res.status(404).json({ error: 'Cotización no encontrada o sin permisos' });
         }
-
-        res.json(cotizacion);
+        
+        // Segundo: consulta con datos del cliente (sin las relaciones problemáticas)
+        const { data: cotizacion, error } = await supabase
+            .from('cotizaciones')
+            .select(`
+                *,
+                cliente:cliente_id (*)
+            `)
+            .eq('id', id)
+            .single();
+        
+        if (error) {
+            console.error('[getCotizacionById] Error con cliente:', error);
+            // Si falla el join con cliente, devolver sin esa relación
+            const { data: cotizacionSinCliente } = await supabase
+                .from('cotizaciones')
+                .select('*')
+                .eq('id', id)
+                .single();
+            
+            if (cotizacionSinCliente) {
+                return res.json({
+                    ...cotizacionSinCliente,
+                    cliente: null,
+                    pasajeros: [],
+                    vuelos: [],
+                    hospedajes: []
+                });
+            }
+        }
+        
+        // Tercero: cargar relaciones por separado si la consulta principal funcionó
+        let pasajeros = [];
+        let vuelos = [];
+        let hospedajes = [];
+        
+        try {
+            const { data: p } = await supabase
+                .from('cotizacion_pasajeros')
+                .select('*, pasajero:pasajero_id (*)')
+                .eq('cotizacion_id', id);
+            pasajeros = p || [];
+        } catch (e) { console.log('Error cargando pasajeros:', e); }
+        
+        try {
+            const { data: v } = await supabase
+                .from('vuelos')
+                .select('*')
+                .eq('cotizacion_id', id);
+            vuelos = v || [];
+        } catch (e) { console.log('Error cargando vuelos:', e); }
+        
+        try {
+            const { data: h } = await supabase
+                .from('hospedajes')
+                .select('*')
+                .eq('cotizacion_id', id);
+            hospedajes = h || [];
+        } catch (e) { console.log('Error cargando hospedajes:', e); }
+        
+        // Compatibilidad con datos legacy
+        const resultado = {
+            ...cotizacion,
+            pasajeros,
+            vuelos,
+            hospedajes,
+            // Campos legacy para compatibilidad
+            cliente_nombre: cotizacion?.cliente 
+                ? `${cotizacion.cliente.nombre} ${cotizacion.cliente.apellido}`
+                : cotizacion?.cliente_nombre || 'Sin cliente',
+            tipo_cotizacion: cotizacion?.tipo_cotizacion || (cotizacion?.paquete_id ? 'paquete' : 'manual')
+        };
+        
+        res.json(resultado);
     } catch (error) {
         console.error('Error fetching quote:', error);
         res.status(500).json({ error: 'Internal server error' });
