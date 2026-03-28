@@ -151,12 +151,11 @@ export const getCotizaciones = async (req: Request, res: Response) => {
     try {
         console.log('[getCotizaciones] User:', { userId: user?.userId, role: user?.role });
         
-        // Query simple SIN joins para evitar errores
+        // 1. Traer cotizaciones básicas
         let query = supabase
             .from('cotizaciones')
             .select('*');
         
-        // Si no es admin, solo ver las suyas
         if (user.role !== 'admin') {
             query = query.eq('vendedor_id', user.userId);
         }
@@ -171,27 +170,61 @@ export const getCotizaciones = async (req: Request, res: Response) => {
         
         console.log('[getCotizaciones] Encontradas:', cotizaciones?.length || 0);
         
-        // Transformación simple - solo datos básicos, sin joins adicionales
-        const cotizacionesFormateadas = cotizaciones?.map((c: any) => {
-            // Determinar tipo_cotizacion
-            const tipoCotizacion = c.tipo_cotizacion || (c.paquete_id ? 'paquete' : 'manual');
-            
-            // Cliente: usar cliente_nombre legacy
-            const clienteNombre = c.cliente_nombre || 'Sin cliente';
-            
-            // Paquete/Cotización nombre
-            const paqueteNombre = c.nombre_cotizacion || c.paquete_nombre || 'Cotización';
-            
-            return {
-                ...c,
-                tipo_cotizacion: tipoCotizacion,
-                cliente_nombre: clienteNombre,
-                paquete_nombre: paqueteNombre,
-                num_pasajeros: c.num_pasajeros || 1
-            };
-        }) || [];
+        // 2. Obtener IDs únicos de clientes para consulta batch
+        const clienteIds = [...new Set(cotizaciones?.filter(c => c.cliente_id).map(c => c.cliente_id) || [])];
         
-        res.json(cotizacionesFormateadas);
+        // 3. Consultar clientes en batch
+        let clientesMap: any = {};
+        if (clienteIds.length > 0) {
+            const { data: clientes } = await supabase
+                .from('clientes')
+                .select('id, nombre, apellido')
+                .in('id', clienteIds);
+            
+            clientes?.forEach(c => {
+                clientesMap[c.id] = c;
+            });
+        }
+        
+        // 4. Para cada cotización, obtener conteos de vuelos y hospedajes
+        const cotizacionesConDatos = await Promise.all(
+            (cotizaciones || []).map(async (c: any) => {
+                // Contar vuelos
+                const { count: numVuelos } = await supabase
+                    .from('vuelos')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('cotizacion_id', c.id);
+                
+                // Contar hospedajes
+                const { count: numHospedajes } = await supabase
+                    .from('hospedajes')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('cotizacion_id', c.id);
+                
+                // Determinar tipo y nombres
+                const tipoCotizacion = c.tipo_cotizacion || (c.paquete_id ? 'paquete' : 'manual');
+                
+                // Cliente: usar tabla clientes si existe, sino legacy
+                let clienteNombre = c.cliente_nombre || 'Sin cliente';
+                if (c.cliente_id && clientesMap[c.cliente_id]) {
+                    clienteNombre = `${clientesMap[c.cliente_id].nombre} ${clientesMap[c.cliente_id].apellido}`;
+                }
+                
+                const paqueteNombre = c.nombre_cotizacion || c.paquete_nombre || 'Cotización';
+                
+                return {
+                    ...c,
+                    tipo_cotizacion: tipoCotizacion,
+                    cliente_nombre: clienteNombre,
+                    paquete_nombre: paqueteNombre,
+                    vuelos: Array(numVuelos || 0).fill({}), // Array vacío del tamaño correcto para la UI
+                    hospedaje: Array(numHospedajes || 0).fill({}),
+                    num_pasajeros: c.num_pasajeros || 1
+                };
+            })
+        );
+        
+        res.json(cotizacionesConDatos);
     } catch (error: any) {
         console.error('[getCotizaciones] Error:', error);
         res.status(500).json({ error: 'Internal server error', details: error.message });
