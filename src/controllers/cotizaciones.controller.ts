@@ -149,7 +149,9 @@ export const createCotizacion = async (req: Request, res: Response) => {
 export const getCotizaciones = async (req: Request, res: Response) => {
     const user = (req as any).user;
     try {
-        // Query simple sin joins complejos para evitar errores con datos legacy
+        console.log('[getCotizaciones] User:', { userId: user?.userId, role: user?.role });
+        
+        // Query simple SIN joins para evitar errores
         let query = supabase
             .from('cotizaciones')
             .select('*');
@@ -163,38 +165,21 @@ export const getCotizaciones = async (req: Request, res: Response) => {
             .order('fecha_creacion', { ascending: false });
 
         if (error) {
-            console.error('Error fetching quotes:', error);
+            console.error('[getCotizaciones] Error:', error);
             return res.status(500).json({ error: 'Error al obtener cotizaciones', details: error.message });
         }
         
-        // Para cotizaciones con cliente_id (nuevo schema), cargar nombres de clientes
-        const clienteIds = cotizaciones?.filter(c => c.cliente_id).map(c => c.cliente_id) || [];
-        let clientesMap: any = {};
+        console.log('[getCotizaciones] Encontradas:', cotizaciones?.length || 0);
         
-        if (clienteIds.length > 0) {
-            const { data: clientes } = await supabase
-                .from('clientes')
-                .select('id, nombre, apellido')
-                .in('id', clienteIds);
-            
-            clientes?.forEach(c => {
-                clientesMap[c.id] = c;
-            });
-        }
-        
-        // Transformar datos para el frontend
+        // Transformación simple - solo datos básicos, sin joins adicionales
         const cotizacionesFormateadas = cotizaciones?.map((c: any) => {
             // Determinar tipo_cotizacion
             const tipoCotizacion = c.tipo_cotizacion || (c.paquete_id ? 'paquete' : 'manual');
             
-            // Extraer nombre del cliente (nuevo schema o legacy)
-            let clienteNombre = c.cliente_nombre || 'Sin cliente';
-            if (c.cliente_id && clientesMap[c.cliente_id]) {
-                const cli = clientesMap[c.cliente_id];
-                clienteNombre = `${cli.nombre} ${cli.apellido}`;
-            }
+            // Cliente: usar cliente_nombre legacy
+            const clienteNombre = c.cliente_nombre || 'Sin cliente';
             
-            // Extraer nombre del paquete/cotización
+            // Paquete/Cotización nombre
             const paqueteNombre = c.nombre_cotizacion || c.paquete_nombre || 'Cotización';
             
             return {
@@ -202,15 +187,13 @@ export const getCotizaciones = async (req: Request, res: Response) => {
                 tipo_cotizacion: tipoCotizacion,
                 cliente_nombre: clienteNombre,
                 paquete_nombre: paqueteNombre,
-                vuelos: [], // Se cargan en el detalle
-                hospedaje: [], // Se cargan en el detalle
                 num_pasajeros: c.num_pasajeros || 1
             };
-        });
+        }) || [];
         
         res.json(cotizacionesFormateadas);
     } catch (error: any) {
-        console.error('Error fetching quotes:', error);
+        console.error('[getCotizaciones] Error:', error);
         res.status(500).json({ error: 'Internal server error', details: error.message });
     }
 };
