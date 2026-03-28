@@ -736,6 +736,8 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
             pasajero_titular_id,  // ID del pasajero titular (debe estar en pasajeros_ids o ser creado)
             nombre_cotizacion,
             vendedor_id: vendedor_id_body,
+            paquete_id,           // Si viene de un paquete del catálogo
+            tipo_cotizacion,      // 'manual' | 'paquete'
             vuelos,
             hospedajes,
             itinerario,
@@ -916,7 +918,42 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
             }
         }
 
-        // ========== PASO 3: CREAR COTIZACIÓN ==========
+        // ========== PASO 3: CONSULTAR PAQUETE (si aplica) ==========
+        let paqueteData: any = null;
+        let paqueteItinerario = itinerario || null;
+        let paqueteIncluye = incluye || [];
+        let paqueteNoIncluye = no_incluye || [];
+        let paquetePoliticas = politicas_cancelacion || '';
+        let paqueteDestino = '';
+        
+        if (paquete_id) {
+            const { data: paquete } = await supabase
+                .from('paquetes')
+                .select('*')
+                .eq('id', paquete_id)
+                .single();
+            
+            if (paquete) {
+                paqueteData = paquete;
+                paqueteDestino = paquete.destino || '';
+                
+                // Usar datos del paquete si no se proporcionaron explícitamente
+                if (!paqueteItinerario && paquete.itinerario) {
+                    paqueteItinerario = paquete.itinerario;
+                }
+                if (paqueteIncluye.length === 0 && paquete.incluye) {
+                    paqueteIncluye = paquete.incluye;
+                }
+                if (paqueteNoIncluye.length === 0 && paquete.no_incluye) {
+                    paqueteNoIncluye = paquete.no_incluye;
+                }
+                if (!paquetePoliticas && paquete.politicas_cancelacion) {
+                    paquetePoliticas = paquete.politicas_cancelacion;
+                }
+            }
+        }
+
+        // ========== PASO 4: CREAR COTIZACIÓN ==========
         const year = new Date().getFullYear();
         const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
         const codigo = `COT-${year}-${random}`;
@@ -925,13 +962,33 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
         fecha_expiracion.setDate(fecha_expiracion.getDate() + 7);
 
         // Determinar destino principal
-        let destino_principal = '';
-        if (hospedajes && hospedajes.length > 0) {
+        let destino_principal = paqueteDestino;
+        if (!destino_principal && hospedajes && hospedajes.length > 0) {
             destino_principal = hospedajes[0].ciudad;
-        } else if (vuelos && vuelos.length > 0) {
+        } else if (!destino_principal && vuelos && vuelos.length > 0) {
             const vueloDestino = vuelos.find((v: any) => v.tipo_trayecto === 'ida' || !v.tipo_trayecto);
             destino_principal = vueloDestino?.destino_ciudad || vuelos[0].destino_ciudad;
         }
+
+        // Preparar paquete_data
+        const paqueteDataJson = {
+            titulo: paqueteData?.titulo || nombre_cotizacion || '',
+            destino: paqueteData?.destino || destino_principal,
+            descripcion: paqueteData?.descripcion || '',
+            duracion_dias: paqueteData?.duracion_dias,
+            imagen_principal: paqueteData?.imagen_principal,
+            politicas_cancelacion: paquetePoliticas,
+            incluye: paqueteIncluye,
+            no_incluye: paqueteNoIncluye,
+            itinerario: paqueteItinerario,
+            vuelos: paqueteData?.vuelos || [],
+            // Desglose de precios
+            precio_vuelos: precios.vuelos || 0,
+            precio_hospedajes: precios.hospedajes || 0,
+            precio_extras: precios.extras || 0,
+            precio_subtotal: precios.subtotal || precios.total || 0,
+            precio_impuestos: precios.impuestos || 0
+        };
 
         const { data: cotizacion, error: cotizacionError } = await supabase
             .from('cotizaciones')
@@ -939,29 +996,21 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                 codigo,
                 cliente_id: clienteFinalId,
                 vendedor_id,
-                paquete_id: null,
+                paquete_id: paquete_id || null,
                 estado: 'pendiente',
                 fecha_creacion: new Date().toISOString(),
                 fecha_expiracion: fecha_expiracion.toISOString(),
                 nombre_cotizacion: nombre_cotizacion || `Viaje a ${destino_principal || 'Destino'}`,
-                tipo_cotizacion: 'manual',
-                origen_datos: origen_datos || 'manual',
+                tipo_cotizacion: tipo_cotizacion || (paquete_id ? 'paquete' : 'manual'),
+                origen_datos: origen_datos || (paquete_id ? 'paquete' : 'manual'),
                 precio_total: parseFloat(precios.total) || 0,
                 precio_moneda: precios.moneda || 'USD',
                 comision_vendedor: (parseFloat(precios.total) || 0) * 0.12,
-                paquete_data: {
-                    incluye: incluye || [],
-                    no_incluye: no_incluye || [],
-                    politicas_cancelacion: politicas_cancelacion || '',
-                    // Desglose de precios
-                    precio_vuelos: precios.vuelos || 0,
-                    precio_hospedajes: precios.hospedajes || 0,
-                    precio_extras: precios.extras || 0,
-                    precio_subtotal: precios.subtotal || precios.total || 0,
-                    precio_impuestos: precios.impuestos || 0
-                },
-                itinerario: itinerario || null,
-                notas: `Cotización manual creada desde cero. Destino: ${destino_principal}`,
+                paquete_data: paqueteDataJson,
+                itinerario: paqueteItinerario,
+                notas: paquete_id 
+                    ? `Cotización desde paquete: ${paqueteData?.titulo || ''}. Destino: ${destino_principal}`
+                    : `Cotización manual creada desde cero. Destino: ${destino_principal}`,
                 destino_principal,
                 num_pasajeros: pasajerosVinculados.length
             })
@@ -974,19 +1023,24 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
         }
 
         // ========== PASO 4: GUARDAR VUELOS ==========
-        if (vuelos && vuelos.length > 0) {
-            const vuelosInsert = vuelos.map((v: any, index: number) => ({
+        // Si hay vuelos explícitos, usarlos. Si no y hay paquete, usar vuelos del paquete
+        const vuelosAGuardar = (vuelos && vuelos.length > 0) 
+            ? vuelos 
+            : (paqueteData?.vuelos || []);
+        
+        if (vuelosAGuardar.length > 0) {
+            const vuelosInsert = vuelosAGuardar.map((v: any, index: number) => ({
                 cotizacion_id: cotizacion.id,
-                tipo_trayecto: v.tipo_trayecto || 'ida',
+                tipo_trayecto: v.tipo || v.tipo_trayecto || 'ida',
                 orden: index + 1,
                 aerolinea_codigo: v.aerolinea_codigo,
                 aerolinea_nombre: v.aerolinea_nombre,
                 numero_vuelo: v.numero_vuelo,
                 origen_codigo: v.origen_codigo,
-                origen_nombre: v.origen_nombre,
+                origen_nombre: v.origen_nombre || v.origen_ciudad,
                 origen_terminal: v.origen_terminal,
                 destino_codigo: v.destino_codigo,
-                destino_nombre: v.destino_nombre,
+                destino_nombre: v.destino_nombre || v.destino_ciudad,
                 destino_terminal: v.destino_terminal,
                 fecha_salida: v.fecha_salida,
                 hora_salida: v.hora_salida,
