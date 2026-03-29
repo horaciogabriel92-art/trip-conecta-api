@@ -1304,21 +1304,12 @@ export const enviarCotizacion = async (req: Request, res: Response) => {
             return res.status(403).json({ error: 'No autorizado' });
         }
         
-        // Actualizar estado a respondida y fecha de envío
-        const updateData: any = {
-            estado: 'respondida'
-        };
-        
-        // Solo agregar fecha_envio si la columna existe
-        try {
-            updateData.fecha_envio = new Date().toISOString();
-        } catch (e) {
-            console.log('fecha_envio no disponible');
-        }
-        
+        // Actualizar estado a respondida (sin fecha_envio por ahora)
         const { data: cotizacion, error } = await supabase
             .from('cotizaciones')
-            .update(updateData)
+            .update({ 
+                estado: 'respondida'
+            })
             .eq('id', id)
             .select()
             .single();
