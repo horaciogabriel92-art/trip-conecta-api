@@ -27,9 +27,16 @@ export const getVentaById = async (req: Request, res: Response) => {
     const user = (req as any).user;
     
     try {
+        // Obtener venta con cotizacion para traer comprobantes
         let query = supabase
             .from('ventas')
-            .select('*')
+            .select(`
+                *,
+                cotizacion:cotizacion_id (
+                    id,
+                    comprobantes_pago:comprobantes_pago(*)
+                )
+            `)
             .eq('id', id);
         
         if (user.role !== 'admin') {
@@ -42,7 +49,20 @@ export const getVentaById = async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Venta no encontrada' });
         }
 
-        res.json(venta);
+        // Formatear respuesta para incluir comprobantes en el nivel raíz
+        const comprobantes = venta.cotizacion?.comprobantes_pago || [];
+        const comprobantesConUrl = comprobantes.map((c: any) => ({
+            ...c,
+            url: `/uploads/comprobantes/${c.ruta_archivo}`
+        }));
+        
+        const ventaFormateada = {
+            ...venta,
+            comprobantes_pago: comprobantesConUrl
+        };
+        delete (ventaFormateada as any).cotizacion;
+
+        res.json(ventaFormateada);
     } catch (error) {
         console.error('Error fetching sale:', error);
         res.status(500).json({ error: 'Internal server error' });

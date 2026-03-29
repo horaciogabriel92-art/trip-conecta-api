@@ -365,5 +365,54 @@ router.delete('/comprobante-pago/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// Obtener comprobantes de pago de una VENTA (para admin)
+router.get('/comprobantes-venta/:ventaId', authenticateToken, async (req, res) => {
+  try {
+    const { ventaId } = req.params;
+    const userId = (req as any).user.userId;
+    const userRole = (req as any).user.role;
+
+    // Obtener la venta para verificar permisos y cotizacion_id
+    const { data: venta, error: ventaError } = await supabase
+      .from('ventas')
+      .select('id, vendedor_id, cotizacion_id')
+      .eq('id', ventaId)
+      .single();
+
+    if (ventaError || !venta) {
+      return res.status(404).json({ error: 'Venta no encontrada' });
+    }
+
+    // Verificar permisos (admin o el vendedor dueño)
+    if (userRole !== 'admin' && venta.vendedor_id !== userId) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+
+    // Obtener comprobantes de la cotización asociada
+    const { data: comprobantes, error } = await supabase
+      .from('comprobantes_pago')
+      .select('*')
+      .eq('cotizacion_id', venta.cotizacion_id)
+      .order('fecha_subida', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching comprobantes:', error);
+      return res.status(500).json({ error: 'Error al obtener comprobantes' });
+    }
+
+    // Agregar URLs públicas
+    const comprobantesConUrl = comprobantes.map((c: any) => ({
+      ...c,
+      url: `/uploads/comprobantes/${c.ruta_archivo}`
+    }));
+
+    res.json(comprobantesConUrl);
+
+  } catch (error: any) {
+    console.error('Error fetching comprobantes:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
 console.log('[UPLOAD ROUTES] Upload routes loaded successfully');
 export default router;
