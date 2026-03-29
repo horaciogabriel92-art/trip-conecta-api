@@ -26,17 +26,13 @@ export const getVentaById = async (req: Request, res: Response) => {
     const { id } = req.params;
     const user = (req as any).user;
     
+    console.log('getVentaById - ID:', id, 'User:', user?.userId, 'Role:', user?.role);
+    
     try {
-        // Obtener venta con cotizacion para traer comprobantes
+        // Paso 1: Obtener venta básica
         let query = supabase
             .from('ventas')
-            .select(`
-                *,
-                cotizacion:cotizacion_id (
-                    id,
-                    comprobantes_pago:comprobantes_pago(*)
-                )
-            `)
+            .select('*')
             .eq('id', id);
         
         if (user.role !== 'admin') {
@@ -45,27 +41,45 @@ export const getVentaById = async (req: Request, res: Response) => {
 
         const { data: venta, error } = await query.single();
 
-        if (error || !venta) {
+        if (error) {
+            console.error('Error fetching venta:', error);
+            return res.status(404).json({ error: 'Venta no encontrada', details: error.message });
+        }
+        
+        if (!venta) {
             return res.status(404).json({ error: 'Venta no encontrada' });
         }
 
-        // Formatear respuesta para incluir comprobantes en el nivel raíz
-        const comprobantes = venta.cotizacion?.comprobantes_pago || [];
-        const comprobantesConUrl = comprobantes.map((c: any) => ({
-            ...c,
-            url: `/uploads/comprobantes/${c.ruta_archivo}`
-        }));
+        console.log('Venta encontrada:', { id: venta.id, cotizacion_id: venta.cotizacion_id });
+
+        // Paso 2: Obtener comprobantes de pago si hay cotizacion_id
+        let comprobantesConUrl: any[] = [];
+        if (venta.cotizacion_id) {
+            const { data: comprobantes, error: compError } = await supabase
+                .from('comprobantes_pago')
+                .select('*')
+                .eq('cotizacion_id', venta.cotizacion_id);
+            
+            if (compError) {
+                console.error('Error fetching comprobantes:', compError);
+            } else {
+                comprobantesConUrl = (comprobantes || []).map((c: any) => ({
+                    ...c,
+                    url: `/uploads/comprobantes/${c.ruta_archivo}`
+                }));
+                console.log('Comprobantes encontrados:', comprobantesConUrl.length);
+            }
+        }
         
         const ventaFormateada = {
             ...venta,
             comprobantes_pago: comprobantesConUrl
         };
-        delete (ventaFormateada as any).cotizacion;
 
         res.json(ventaFormateada);
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error fetching sale:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ error: 'Internal server error', details: error.message });
     }
 };
 
