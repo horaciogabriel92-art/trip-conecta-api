@@ -474,9 +474,37 @@ export const convertirAVenta = async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Cotización no encontrada' });
         }
 
+        console.log('Cotización encontrada:', { 
+            id: cotizacion.id, 
+            cliente_id: cotizacion.cliente_id,
+            cliente_nombre: cotizacion.cliente_nombre,
+            cliente_email: cotizacion.cliente_email,
+            cliente_telefono: cotizacion.cliente_telefono
+        });
+
         // Verificar que sea del vendedor o admin
         if (user.role !== 'admin' && cotizacion.vendedor_id !== user.userId) {
             return res.status(403).json({ error: 'No autorizado' });
+        }
+
+        // Obtener datos del cliente si no están en la cotización
+        let clienteNombre = cotizacion.cliente_nombre;
+        let clienteEmail = cotizacion.cliente_email;
+        let clienteTelefono = cotizacion.cliente_telefono;
+        
+        if (!clienteNombre && cotizacion.cliente_id) {
+            const { data: cliente } = await supabase
+                .from('clientes')
+                .select('nombre, apellido, email, telefono')
+                .eq('id', cotizacion.cliente_id)
+                .single();
+            
+            if (cliente) {
+                clienteNombre = `${cliente.nombre} ${cliente.apellido}`.trim();
+                clienteEmail = cliente.email;
+                clienteTelefono = cliente.telefono;
+                console.log('Cliente obtenido de tabla clientes:', { clienteNombre, clienteEmail });
+            }
         }
 
         // Verificar que haya cupos disponibles
@@ -551,15 +579,17 @@ export const convertirAVenta = async (req: Request, res: Response) => {
         }
 
         // Crear venta con datos heredados
+        console.log('Creando venta con:', { clienteNombre, clienteEmail, clienteTelefono });
+        
         const { data: venta, error: ventaError } = await supabase
             .from('ventas')
             .insert({
                 codigo: codigo_venta,
                 cotizacion_id: id,
                 vendedor_id: cotizacion.vendedor_id,
-                cliente_nombre: cotizacion.cliente_nombre,
-                cliente_email: cotizacion.cliente_email,
-                cliente_telefono: cotizacion.cliente_telefono,
+                cliente_nombre: clienteNombre || 'Cliente sin nombre',
+                cliente_email: clienteEmail || null,
+                cliente_telefono: clienteTelefono || null,
                 paquete_id: cotizacion.paquete_id,
                 paquete_nombre: paquete?.titulo || 'Paquete',
                 fecha_salida: cotizacion.fecha_salida,
