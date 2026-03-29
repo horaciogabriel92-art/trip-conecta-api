@@ -415,6 +415,69 @@ export const getCotizacionById = async (req: Request, res: Response) => {
             } catch (e) { console.log('Error cargando paquete:', e); }
         }
         
+        // ========== CARGAR DATOS DE VENTA Y COMPROBANTES (si está vendida) ==========
+        let venta = null;
+        let comprobantesPago: any[] = [];
+        
+        if (cotizacion?.estado === 'vendida') {
+            try {
+                // Buscar venta asociada
+                const { data: v } = await supabase
+                    .from('ventas')
+                    .select('*')
+                    .eq('cotizacion_id', id)
+                    .single();
+                venta = v;
+                
+                if (venta) {
+                    // Parsear comprobantes_pago_urls si existe
+                    if (venta.comprobantes_pago_urls) {
+                        try {
+                            const urls = JSON.parse(venta.comprobantes_pago_urls);
+                            comprobantesPago = urls.map((url: string, idx: number) => {
+                                const filename = url.split('/').pop() || `comprobante_${idx + 1}`;
+                                return {
+                                    id: `comp_${idx}`,
+                                    nombre_archivo: filename,
+                                    url: url,
+                                    es_descargable: true
+                                };
+                            });
+                        } catch (e) {
+                            console.log('Error parseando comprobantes_pago_urls:', e);
+                        }
+                    }
+                    
+                    // También buscar en tabla comprobantes_pago si existe
+                    try {
+                        const { data: comps } = await supabase
+                            .from('comprobantes_pago')
+                            .select('*')
+                            .eq('venta_id', venta.id);
+                        if (comps && comps.length > 0) {
+                            // Merge comprobantes de la tabla con los de JSON
+                            const existingUrls = new Set(comprobantesPago.map((c: any) => c.url));
+                            comps.forEach((comp: any) => {
+                                if (!existingUrls.has(comp.ruta_archivo)) {
+                                    comprobantesPago.push({
+                                        id: comp.id,
+                                        nombre_archivo: comp.nombre_archivo,
+                                        url: comp.ruta_archivo,
+                                        es_descargable: true
+                                    });
+                                }
+                            });
+                        }
+                    } catch (e) {
+                        // La tabla puede no existir, ignorar error
+                        console.log('Tabla comprobantes_pago no disponible:', e);
+                    }
+                }
+            } catch (e) { 
+                console.log('Error cargando venta/comprobantes:', e); 
+            }
+        }
+        
         // Mapear vuelos para compatibilidad de campos (origen_nombre -> origen_ciudad, etc.)
         const vuelosMapeados = vuelos.map((v: any) => ({
             ...v,
@@ -431,6 +494,9 @@ export const getCotizacionById = async (req: Request, res: Response) => {
             vuelos: vuelosMapeados,
             hospedajes,
             paquete,
+            // Datos de venta (solo para admin/vendedor cuando está vendida)
+            venta,
+            comprobantes_pago: comprobantesPago,
             // Campos legacy para compatibilidad
             cliente_nombre: cotizacion?.cliente 
                 ? `${cotizacion.cliente.nombre} ${cotizacion.cliente.apellido}`

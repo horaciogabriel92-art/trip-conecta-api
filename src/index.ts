@@ -36,6 +36,7 @@ import documentosRoutes from './routes/documentos.routes';
 import comisionesRoutes from './routes/comisiones.routes';
 import uploadRoutes from './routes/upload.routes';
 import clientesRoutes from './routes/clientes.routes';
+import notificacionesRoutes from './routes/notificaciones.routes';
 app.use('/api/auth', express.json(), authRoutes);
 app.use('/api/paquetes', express.json(), paquetesRoutes);
 app.use('/api/cotizaciones', express.json(), cotizacionesRoutes);
@@ -43,6 +44,7 @@ app.use('/api/ventas', express.json(), ventasRoutes);
 app.use('/api/documentos', express.json(), documentosRoutes);
 app.use('/api/comisiones', express.json(), comisionesRoutes);
 app.use('/api/clientes', express.json(), clientesRoutes);
+app.use('/api/notificaciones', express.json(), notificacionesRoutes);
 app.use('/api/upload', uploadRoutes); // Sin express.json() - usa multipart
 
 // Health check con verificación de Supabase
