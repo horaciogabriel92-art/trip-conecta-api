@@ -487,6 +487,21 @@ export const convertirAVenta = async (req: Request, res: Response) => {
             return res.status(403).json({ error: 'No autorizado' });
         }
 
+        // Verificar que no exista ya una venta para esta cotización
+        const { data: ventaExistente, error: ventaCheckError } = await supabase
+            .from('ventas')
+            .select('id, codigo')
+            .eq('cotizacion_id', id)
+            .maybeSingle();
+        
+        if (ventaExistente) {
+            return res.status(400).json({ 
+                error: 'Ya existe una venta para esta cotización',
+                venta_id: ventaExistente.id,
+                codigo: ventaExistente.codigo
+            });
+        }
+
         // Obtener datos del cliente si no están en la cotización
         let clienteNombre = cotizacion.cliente_nombre;
         let clienteEmail = cotizacion.cliente_email;
@@ -622,7 +637,8 @@ export const convertirAVenta = async (req: Request, res: Response) => {
         }
 
         // Actualizar cotización con datos de pago
-        await supabase
+        console.log('Actualizando cotización a vendida...');
+        const { error: updateError } = await supabase
             .from('cotizaciones')
             .update({ 
                 estado: 'vendida',
@@ -635,6 +651,13 @@ export const convertirAVenta = async (req: Request, res: Response) => {
                 fecha_pago: pago_realizado ? new Date().toISOString() : null
             })
             .eq('id', id);
+        
+        if (updateError) {
+            console.error('Error actualizando cotización:', updateError);
+            // No fallamos la venta si esto falla, solo logueamos
+        } else {
+            console.log('Cotización actualizada a vendida exitosamente');
+        }
 
         // RESTAR CUPOS DISPONIBLES
         const nuevosCupos = (paquete.cupos_disponibles || 0) - cotizacion.num_pasajeros;
