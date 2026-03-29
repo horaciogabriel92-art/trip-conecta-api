@@ -577,7 +577,14 @@ export const convertirAVenta = async (req: Request, res: Response) => {
             .select()
             .single();
 
-        if (ventaError) throw ventaError;
+        if (ventaError) {
+            console.error('Error creating venta:', ventaError);
+            return res.status(500).json({ 
+                error: 'Error al crear venta', 
+                details: ventaError.message,
+                code: ventaError.code
+            });
+        }
 
         // Actualizar cotización con datos de pago
         await supabase
