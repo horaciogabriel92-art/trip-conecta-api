@@ -183,7 +183,7 @@ export const createCotizacion = async (req: Request, res: Response) => {
                 paquete_data: paqueteData,
                 itinerario: paqueteData.itinerario,
                 destino_principal: paquete.destino,
-                estado: 'pendiente',
+                estado: 'nueva',
                 fecha_expiracion: fecha_expiracion.toISOString()
             })
             .select()
@@ -583,7 +583,7 @@ export const convertirAVenta = async (req: Request, res: Response) => {
         await supabase
             .from('cotizaciones')
             .update({ 
-                estado: 'convertida',
+                estado: 'vendida',
                 fecha_conversion: new Date().toISOString(),
                 pago_realizado: pago_realizado || false,
                 monto_pagado: pago_realizado ? monto_pagado : null,
@@ -710,7 +710,7 @@ export const rechazarCotizacion = async (req: Request, res: Response) => {
         const { data: cotizacion, error } = await supabase
             .from('cotizaciones')
             .update({
-                estado: 'cancelada',
+                estado: 'perdida',
                 notas_admin: notas_admin,
                 fecha_rechazo: new Date().toISOString()
             })
@@ -1075,7 +1075,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                 cliente_id: clienteFinalId,
                 vendedor_id,
                 paquete_id: paquete_id || null,
-                estado: 'pendiente',
+                estado: 'nueva',
                 fecha_creacion: new Date().toISOString(),
                 fecha_expiracion: fecha_expiracion.toISOString(),
                 nombre_cotizacion: nombre_cotizacion || `Viaje a ${destino_principal || 'Destino'}`,
@@ -1245,7 +1245,7 @@ export const deleteCotizacion = async (req: Request, res: Response) => {
         }
 
         // No permitir eliminar cotizaciones ya vendidas (convertidas)
-        if (cotizacion.estado === 'convertida') {
+        if (cotizacion.estado === 'vendida') {
             return res.status(400).json({ 
                 error: 'No se puede eliminar una cotización que ya fue convertida en venta',
                 message: 'Esta cotización ya fue vendida y no puede ser eliminada por razones de auditoría.'
@@ -1304,11 +1304,11 @@ export const enviarCotizacion = async (req: Request, res: Response) => {
             return res.status(403).json({ error: 'No autorizado' });
         }
         
-        // Actualizar estado a respondida (sin fecha_envio por ahora)
+        // Actualizar estado a enviada
         const { data: cotizacion, error } = await supabase
             .from('cotizaciones')
             .update({ 
-                estado: 'respondida'
+                estado: 'enviada'
             })
             .eq('id', id)
             .select()
@@ -1348,7 +1348,7 @@ export const runMigration = async (req: Request, res: Response) => {
                 ALTER TABLE cotizaciones ADD COLUMN IF NOT EXISTS fecha_envio TIMESTAMP WITH TIME ZONE;
                 ALTER TABLE cotizaciones DROP CONSTRAINT IF EXISTS cotizaciones_estado_check;
                 ALTER TABLE cotizaciones ADD CONSTRAINT cotizaciones_estado_check 
-                    CHECK (estado IN ('pendiente', 'respondida', 'convertida', 'vencida', 'cancelada'));
+                    CHECK (estado IN ('nueva', 'enviada', 'vendida', 'perdida'));
             `
         });
         
