@@ -1305,12 +1305,20 @@ export const enviarCotizacion = async (req: Request, res: Response) => {
         }
         
         // Actualizar estado a respondida y fecha de envío
+        const updateData: any = {
+            estado: 'respondida'
+        };
+        
+        // Solo agregar fecha_envio si la columna existe
+        try {
+            updateData.fecha_envio = new Date().toISOString();
+        } catch (e) {
+            console.log('fecha_envio no disponible');
+        }
+        
         const { data: cotizacion, error } = await supabase
             .from('cotizaciones')
-            .update({
-                estado: 'respondida',
-                fecha_envio: new Date().toISOString()
-            })
+            .update(updateData)
             .eq('id', id)
             .select()
             .single();
