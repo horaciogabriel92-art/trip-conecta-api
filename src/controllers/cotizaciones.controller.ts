@@ -457,6 +457,11 @@ export const convertirAVenta = async (req: Request, res: Response) => {
     } = req.body;
     const user = (req as any).user;
     
+    console.log('=== CONVERTIR A VENTA ===');
+    console.log('ID:', id);
+    console.log('User:', user?.userId, 'Role:', user?.role);
+    console.log('Body:', { pago_realizado, monto_pagado, tipo_pago, medio_pago, observaciones_pago: observaciones_pago?.substring(0, 50) });
+    
     try {
         // Obtener cotización con sus comprobantes
         const { data: cotizacion, error: cotError } = await supabase
@@ -615,8 +620,20 @@ export const convertirAVenta = async (req: Request, res: Response) => {
             comprobantes_count: comprobantes?.length || 0
         });
     } catch (error: any) {
-        console.error('Error converting quote:', error);
-        res.status(500).json({ error: 'Internal server error', details: error.message });
+        console.error('=== ERROR CONVERTIR A VENTA ===');
+        console.error('Error message:', error.message);
+        console.error('Error code:', error.code);
+        console.error('Error details:', error.details);
+        console.error('Error hint:', error.hint);
+        console.error('Stack:', error.stack);
+        
+        res.status(500).json({ 
+            error: 'Error al crear venta', 
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint
+        });
     }
 };
 
