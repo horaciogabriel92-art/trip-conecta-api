@@ -318,7 +318,9 @@ router.get('/comprobante-pago/:id/download', authenticateToken, async (req, res)
 // Descargar comprobante por nombre de archivo (para comprobantes legacy del JSON)
 router.get('/comprobante-pago/download-by-filename/:filename', authenticateToken, async (req, res) => {
   try {
-    const { filename } = req.params;
+    // El parámetro puede ser string o string[], asegurarnos de usar string
+    const filenameParam = req.params.filename;
+    const filename = Array.isArray(filenameParam) ? filenameParam[0] : filenameParam;
     
     // Sanitizar filename - solo permitir caracteres seguros
     const safeFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '');
