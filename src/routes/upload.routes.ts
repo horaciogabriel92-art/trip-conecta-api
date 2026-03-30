@@ -315,6 +315,46 @@ router.get('/comprobante-pago/:id/download', authenticateToken, async (req, res)
   }
 });
 
+// Descargar comprobante por nombre de archivo (para comprobantes legacy del JSON)
+router.get('/comprobante-pago/download-by-filename/:filename', authenticateToken, async (req, res) => {
+  try {
+    const { filename } = req.params;
+    
+    // Sanitizar filename - solo permitir caracteres seguros
+    const safeFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '');
+    
+    if (!safeFilename) {
+      return res.status(400).json({ error: 'Nombre de archivo inválido' });
+    }
+
+    const uploadDir = process.env.STORAGE_PATH || './storage/uploads';
+    const filePath = path.join(uploadDir, 'comprobantes', safeFilename);
+
+    // Verificar que el archivo exista
+    if (!fs.existsSync(filePath)) {
+      console.error('[Download] Archivo no encontrado:', filePath);
+      return res.status(404).json({ error: 'Archivo no encontrado' });
+    }
+
+    // Determinar content type
+    const ext = path.extname(safeFilename).toLowerCase();
+    const contentType = ext === '.pdf' ? 'application/pdf' : 
+                        ext === '.png' ? 'image/png' :
+                        ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' :
+                        'application/octet-stream';
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `inline; filename="${safeFilename}"`);
+    
+    const fileStream = fs.createReadStream(filePath);
+    fileStream.pipe(res);
+
+  } catch (error: any) {
+    console.error('Error downloading comprobante by filename:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
 // Eliminar comprobante de pago
 router.delete('/comprobante-pago/:id', authenticateToken, async (req, res) => {
   try {
