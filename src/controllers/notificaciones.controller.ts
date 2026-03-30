@@ -13,7 +13,7 @@ export const getNotificaciones = async (req: Request, res: Response) => {
         let query = supabase
             .from('notificaciones')
             .select('*')
-            .order('fecha_creacion', { ascending: false })
+            .order('created_at', { ascending: false })
             .limit(50);
         
         if (user.role === 'admin') {
