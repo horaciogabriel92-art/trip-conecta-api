@@ -248,8 +248,9 @@ export const getCotizaciones = async (req: Request, res: Response) => {
         
         console.log('[getCotizaciones] Encontradas:', cotizaciones?.length || 0);
         
-        // 2. Obtener IDs únicos de clientes para consulta batch
+        // 2. Obtener IDs únicos de clientes y vendedores para consulta batch
         const clienteIds = [...new Set(cotizaciones?.filter(c => c.cliente_id).map(c => c.cliente_id) || [])];
+        const vendedorIds = [...new Set(cotizaciones?.filter(c => c.vendedor_id).map(c => c.vendedor_id) || [])];
         
         // 3. Consultar clientes en batch
         let clientesMap: any = {};
@@ -261,6 +262,19 @@ export const getCotizaciones = async (req: Request, res: Response) => {
             
             clientes?.forEach(c => {
                 clientesMap[c.id] = c;
+            });
+        }
+        
+        // 3b. Consultar vendedores en batch
+        let vendedoresMap: any = {};
+        if (vendedorIds.length > 0) {
+            const { data: vendedores } = await supabase
+                .from('users')
+                .select('id, nombre, apellido')
+                .in('id', vendedorIds);
+            
+            vendedores?.forEach(v => {
+                vendedoresMap[v.id] = v;
             });
         }
         
@@ -288,12 +302,19 @@ export const getCotizaciones = async (req: Request, res: Response) => {
                     clienteNombre = `${clientesMap[c.cliente_id].nombre} ${clientesMap[c.cliente_id].apellido}`;
                 }
                 
+                // Vendedor: usar tabla users
+                let vendedorNombre = c.vendedor_nombre || 'Sin vendedor';
+                if (c.vendedor_id && vendedoresMap[c.vendedor_id]) {
+                    vendedorNombre = `${vendedoresMap[c.vendedor_id].nombre} ${vendedoresMap[c.vendedor_id].apellido}`;
+                }
+                
                 const paqueteNombre = c.nombre_cotizacion || c.paquete_nombre || 'Cotización';
                 
                 return {
                     ...c,
                     tipo_cotizacion: tipoCotizacion,
                     cliente_nombre: clienteNombre,
+                    vendedor_nombre: vendedorNombre,
                     paquete_nombre: paqueteNombre,
                     vuelos: Array(numVuelos || 0).fill({}), // Array vacío del tamaño correcto para la UI
                     hospedaje: Array(numHospedajes || 0).fill({}),
