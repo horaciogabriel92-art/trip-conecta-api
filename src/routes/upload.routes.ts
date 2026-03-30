@@ -322,8 +322,16 @@ router.get('/comprobante-pago/download-by-filename/:filename', authenticateToken
     const filenameParam = req.params.filename;
     const filename = Array.isArray(filenameParam) ? filenameParam[0] : filenameParam;
     
-    // Sanitizar filename - solo permitir caracteres seguros
-    const safeFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '');
+    console.log('[Download] Filename param:', filename);
+    
+    // Decodificar URL encoding si está presente
+    const decodedFilename = decodeURIComponent(filename);
+    
+    // Sanitizar filename - solo permitir caracteres seguros para archivos
+    // Permitir letras, números, puntos, guiones, guiones bajos, y espacios
+    const safeFilename = decodedFilename.replace(/[^a-zA-Z0-9._\-\s]/g, '');
+    
+    console.log('[Download] Safe filename:', safeFilename);
     
     if (!safeFilename) {
       return res.status(400).json({ error: 'Nombre de archivo inválido' });
@@ -331,10 +339,22 @@ router.get('/comprobante-pago/download-by-filename/:filename', authenticateToken
 
     const uploadDir = process.env.STORAGE_PATH || './storage/uploads';
     const filePath = path.join(uploadDir, 'comprobantes', safeFilename);
+    
+    console.log('[Download] STORAGE_PATH:', process.env.STORAGE_PATH);
+    console.log('[Download] Full file path:', filePath);
+    console.log('[Download] Upload dir exists:', fs.existsSync(uploadDir));
+    console.log('[Download] Comprobantes dir exists:', fs.existsSync(path.join(uploadDir, 'comprobantes')));
 
     // Verificar que el archivo exista
     if (!fs.existsSync(filePath)) {
       console.error('[Download] Archivo no encontrado:', filePath);
+      // Listar archivos en el directorio para debug
+      try {
+        const files = fs.readdirSync(path.join(uploadDir, 'comprobantes'));
+        console.log('[Download] Archivos disponibles:', files.slice(0, 10));
+      } catch (e) {
+        console.error('[Download] Error leyendo directorio:', e);
+      }
       return res.status(404).json({ error: 'Archivo no encontrado' });
     }
 
