@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
+import fs from 'fs';
+import path from 'path';
 
 export const createCotizacion = async (req: Request, res: Response) => {
     const { 
@@ -464,20 +466,32 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                 venta = v;
                 
                 if (venta) {
+                    // Verificar archivos físicos existentes
+                    const uploadDir = process.env.STORAGE_PATH || '/app/storage/uploads';
+                    
                     // Parsear comprobantes_pago_urls si existe
                     if (venta.comprobantes_pago_urls) {
                         try {
                             const urls = JSON.parse(venta.comprobantes_pago_urls);
-                            comprobantesPago = urls.map((url: string, idx: number) => {
+                            let idx = 0;
+                            for (const url of urls) {
                                 const filename = url.split('/').pop() || `comprobante_${idx + 1}`;
-                                return {
-                                    id: `comp_${idx}`,
-                                    nombre_archivo: filename,
-                                    url: url,
-                                    ruta_archivo: url, // Agregar ruta completa para descarga
-                                    es_descargable: true
-                                };
-                            });
+                                const filePath = path.join(uploadDir, 'comprobantes', filename);
+                                
+                                // Solo agregar si el archivo existe físicamente
+                                if (fs.existsSync(filePath)) {
+                                    comprobantesPago.push({
+                                        id: `comp_${idx}`,
+                                        nombre_archivo: filename,
+                                        url: url,
+                                        ruta_archivo: url,
+                                        es_descargable: true
+                                    });
+                                } else {
+                                    console.log(`[getCotizacionById] Archivo no existe: ${filePath}`);
+                                }
+                                idx++;
+                            }
                         } catch (e) {
                             console.log('Error parseando comprobantes_pago_urls:', e);
                         }
@@ -491,18 +505,26 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                             .eq('venta_id', venta.id);
                         if (comps && comps.length > 0) {
                             // Merge comprobantes de la tabla con los de JSON
-                            const existingUrls = new Set(comprobantesPago.map((c: any) => c.url));
-                            comps.forEach((comp: any) => {
-                                if (!existingUrls.has(comp.ruta_archivo)) {
-                                    comprobantesPago.push({
-                                        id: comp.id,
-                                        nombre_archivo: comp.nombre_archivo,
-                                        url: `/uploads/comprobantes/${comp.ruta_archivo}`,
-                                        ruta_archivo: `/uploads/comprobantes/${comp.ruta_archivo}`,
-                                        es_descargable: true
-                                    });
+                            const existingUrls = new Set(comprobantesPago.map((c: any) => c.ruta_archivo || c.url));
+                            for (const comp of comps) {
+                                const compUrl = `/uploads/comprobantes/${comp.ruta_archivo}`;
+                                if (!existingUrls.has(compUrl)) {
+                                    const filePath = path.join(uploadDir, 'comprobantes', comp.ruta_archivo);
+                                    
+                                    // Solo agregar si el archivo existe físicamente
+                                    if (fs.existsSync(filePath)) {
+                                        comprobantesPago.push({
+                                            id: comp.id,
+                                            nombre_archivo: comp.nombre_archivo,
+                                            url: compUrl,
+                                            ruta_archivo: compUrl,
+                                            es_descargable: true
+                                        });
+                                    } else {
+                                        console.log(`[getCotizacionById] Comprobante BD sin archivo: ${comp.ruta_archivo}`);
+                                    }
                                 }
-                            });
+                            }
                         }
                     } catch (e) {
                         // La tabla puede no existir, ignorar error
