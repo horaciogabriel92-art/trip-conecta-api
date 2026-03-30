@@ -3,7 +3,7 @@ import { supabase } from '../config/supabase';
 
 /**
  * Obtener notificaciones del usuario actual
- * Para admins: obtiene todas las notificaciones (user_id IS NULL)
+ * Para admins: obtiene todas las notificaciones (usuario_id IS NULL)
  * Para vendedores: obtiene sus notificaciones específicas
  */
 export const getNotificaciones = async (req: Request, res: Response) => {
@@ -17,12 +17,11 @@ export const getNotificaciones = async (req: Request, res: Response) => {
             .limit(50);
         
         if (user.role === 'admin') {
-            // Admin ve notificaciones globales (user_id IS NULL) 
-            // O podríamos hacer que vea todas incluyendo las específicas
-            query = query.is('user_id', null);
+            // Admin ve notificaciones globales (usuario_id IS NULL) 
+            query = query.is('usuario_id', null);
         } else {
             // Vendedor ve sus notificaciones específicas
-            query = query.eq('user_id', user.userId);
+            query = query.eq('usuario_id', user.userId);
         }
         
         const { data: notificaciones, error } = await query;
@@ -65,15 +64,14 @@ export const marcarLeida = async (req: Request, res: Response) => {
         }
         
         // Verificar permisos
-        if (notif.user_id !== null && notif.user_id !== user.userId && user.role !== 'admin') {
+        if (notif.usuario_id !== null && notif.usuario_id !== user.userId && user.role !== 'admin') {
             return res.status(403).json({ error: 'No tiene permisos para esta notificación' });
         }
         
         const { data, error } = await supabase
             .from('notificaciones')
             .update({ 
-                leida: true, 
-                fecha_leida: new Date().toISOString() 
+                leida: true
             })
             .eq('id', id)
             .select()
@@ -101,15 +99,14 @@ export const marcarTodasLeidas = async (req: Request, res: Response) => {
         let query = supabase
             .from('notificaciones')
             .update({ 
-                leida: true, 
-                fecha_leida: new Date().toISOString() 
+                leida: true
             })
             .eq('leida', false);
         
         if (user.role === 'admin') {
-            query = query.is('user_id', null);
+            query = query.is('usuario_id', null);
         } else {
-            query = query.eq('user_id', user.userId);
+            query = query.eq('usuario_id', user.userId);
         }
         
         const { error } = await query;
@@ -130,7 +127,7 @@ export const marcarTodasLeidas = async (req: Request, res: Response) => {
  * Crear notificación manual (solo admin)
  */
 export const crearNotificacion = async (req: Request, res: Response) => {
-    const { user_id, tipo, titulo, mensaje, data } = req.body;
+    const { usuario_id, tipo, titulo, mensaje, referencia_id, referencia_tipo } = req.body;
     const user = (req as any).user;
     
     if (user.role !== 'admin') {
@@ -141,11 +138,15 @@ export const crearNotificacion = async (req: Request, res: Response) => {
         const { data: notif, error } = await supabase
             .from('notificaciones')
             .insert({
-                user_id: user_id || null,
+                id: crypto.randomUUID(),
+                usuario_id: usuario_id || null,
                 tipo: tipo || 'sistema',
                 titulo,
                 mensaje,
-                data: data || {}
+                referencia_id: referencia_id || null,
+                referencia_tipo: referencia_tipo || null,
+                leida: false,
+                created_at: new Date().toISOString()
             })
             .select()
             .single();
