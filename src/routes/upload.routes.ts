@@ -500,13 +500,9 @@ router.get('/comprobantes-venta/:ventaId', authenticateToken, async (req, res) =
   }
 });
 
-// DEBUG: Endpoint para diagnosticar archivos de comprobantes (solo admin)
-router.get('/debug/comprobantes-files', authenticateToken, async (req, res) => {
+// DEBUG: Endpoint para diagnosticar archivos de comprobantes (público temporalmente)
+router.get('/debug/comprobantes-files', async (req, res) => {
   try {
-    const userRole = (req as any).user.role;
-    if (userRole !== 'admin') {
-      return res.status(403).json({ error: 'Solo admins pueden acceder' });
-    }
 
     const results: any = {
       env: {
