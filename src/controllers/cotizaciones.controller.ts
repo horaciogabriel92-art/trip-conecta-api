@@ -391,6 +391,19 @@ export const getCotizacionById = async (req: Request, res: Response) => {
         let vuelos = [];
         let hospedajes = [];
         let paquete = null;
+        let vendedor = null;
+        
+        // Cargar vendedor
+        try {
+            if (cotizacion?.vendedor_id) {
+                const { data: v } = await supabase
+                    .from('users')
+                    .select('id, nombre, apellido, email, telefono')
+                    .eq('id', cotizacion.vendedor_id)
+                    .single();
+                vendedor = v;
+            }
+        } catch (e) { console.log('Error cargando vendedor:', e); }
         
         // Cargar pasajeros
         try {
@@ -522,6 +535,10 @@ export const getCotizacionById = async (req: Request, res: Response) => {
             cliente_nombre: cotizacion?.cliente 
                 ? `${cotizacion.cliente.nombre} ${cotizacion.cliente.apellido}`
                 : cotizacion?.cliente_nombre || 'Sin cliente',
+            vendedor_nombre: vendedor 
+                ? `${vendedor.nombre} ${vendedor.apellido}`
+                : 'Sin vendedor',
+            vendedor,
             tipo_cotizacion: cotizacion?.tipo_cotizacion || (cotizacion?.paquete_id ? 'paquete' : 'manual')
         };
         
