@@ -320,53 +320,77 @@ router.get('/comprobante-pago/download-by-filename/:filename', authenticateToken
   try {
     // El parámetro puede ser string o string[], asegurarnos de usar string
     const filenameParam = req.params.filename;
-    const filename = Array.isArray(filenameParam) ? filenameParam[0] : filenameParam;
+    let filename = Array.isArray(filenameParam) ? filenameParam[0] : filenameParam;
     
-    console.log('[Download] Filename param:', filename);
+    console.log('[Download] Raw filename param:', filename);
     
-    // Decodificar URL encoding si está presente
-    const decodedFilename = decodeURIComponent(filename);
+    // Decodificar URL encoding si está presente (reemplazar %2F por /, etc.)
+    try {
+      filename = decodeURIComponent(filename);
+    } catch (e) {
+      console.log('[Download] No URL encoding detected');
+    }
     
-    // Sanitizar filename - solo permitir caracteres seguros para archivos
-    // Permitir letras, números, puntos, guiones, guiones bajos, y espacios
-    const safeFilename = decodedFilename.replace(/[^a-zA-Z0-9._\-\s]/g, '');
+    // Extraer solo el nombre del archivo (eliminar cualquier path)
+    const basename = path.basename(filename);
     
-    console.log('[Download] Safe filename:', safeFilename);
+    console.log('[Download] Basename:', basename);
     
-    if (!safeFilename) {
+    if (!basename || basename === '.' || basename === '..') {
       return res.status(400).json({ error: 'Nombre de archivo inválido' });
     }
 
-    const uploadDir = process.env.STORAGE_PATH || './storage/uploads';
-    const filePath = path.join(uploadDir, 'comprobantes', safeFilename);
+    // Intentar múltiples rutas posibles
+    const possiblePaths = [
+      path.join(process.env.STORAGE_PATH || '/app/storage/uploads', 'comprobantes', basename),
+      path.join('./storage/uploads', 'comprobantes', basename),
+      path.join('/data/trip-conecta/uploads', 'comprobantes', basename),
+      path.join('/app/storage/uploads', 'comprobantes', basename),
+    ];
     
-    console.log('[Download] STORAGE_PATH:', process.env.STORAGE_PATH);
-    console.log('[Download] Full file path:', filePath);
-    console.log('[Download] Upload dir exists:', fs.existsSync(uploadDir));
-    console.log('[Download] Comprobantes dir exists:', fs.existsSync(path.join(uploadDir, 'comprobantes')));
+    console.log('[Download] STORAGE_PATH env:', process.env.STORAGE_PATH);
+    console.log('[Download] Checking paths:', possiblePaths);
 
-    // Verificar que el archivo exista
-    if (!fs.existsSync(filePath)) {
-      console.error('[Download] Archivo no encontrado:', filePath);
+    // Encontrar el primer archivo que existe
+    let filePath: string | null = null;
+    for (const tryPath of possiblePaths) {
+      console.log('[Download] Checking:', tryPath, 'exists:', fs.existsSync(tryPath));
+      if (fs.existsSync(tryPath)) {
+        filePath = tryPath;
+        break;
+      }
+    }
+    
+    if (!filePath) {
+      console.error('[Download] Archivo no encontrado en ninguna ruta:', basename);
       // Listar archivos en el directorio para debug
-      try {
-        const files = fs.readdirSync(path.join(uploadDir, 'comprobantes'));
-        console.log('[Download] Archivos disponibles:', files.slice(0, 10));
-      } catch (e) {
-        console.error('[Download] Error leyendo directorio:', e);
+      for (const tryPath of possiblePaths) {
+        const dir = path.dirname(tryPath);
+        try {
+          if (fs.existsSync(dir)) {
+            const files = fs.readdirSync(dir);
+            console.log(`[Download] Archivos en ${dir}:`, files.slice(0, 20));
+          } else {
+            console.log(`[Download] Directorio no existe: ${dir}`);
+          }
+        } catch (e: any) {
+          console.error(`[Download] Error leyendo ${dir}:`, e.message);
+        }
       }
       return res.status(404).json({ error: 'Archivo no encontrado' });
     }
+    
+    console.log('[Download] Archivo encontrado:', filePath);
 
     // Determinar content type
-    const ext = path.extname(safeFilename).toLowerCase();
+    const ext = path.extname(basename).toLowerCase();
     const contentType = ext === '.pdf' ? 'application/pdf' : 
                         ext === '.png' ? 'image/png' :
                         ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' :
                         'application/octet-stream';
 
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', `inline; filename="${safeFilename}"`);
+    res.setHeader('Content-Disposition', `inline; filename="${basename}"`);
     
     const fileStream = fs.createReadStream(filePath);
     fileStream.pipe(res);

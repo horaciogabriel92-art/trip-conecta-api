@@ -474,6 +474,7 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                                     id: `comp_${idx}`,
                                     nombre_archivo: filename,
                                     url: url,
+                                    ruta_archivo: url, // Agregar ruta completa para descarga
                                     es_descargable: true
                                 };
                             });
@@ -496,7 +497,8 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                                     comprobantesPago.push({
                                         id: comp.id,
                                         nombre_archivo: comp.nombre_archivo,
-                                        url: comp.ruta_archivo,
+                                        url: `/uploads/comprobantes/${comp.ruta_archivo}`,
+                                        ruta_archivo: `/uploads/comprobantes/${comp.ruta_archivo}`,
                                         es_descargable: true
                                     });
                                 }
