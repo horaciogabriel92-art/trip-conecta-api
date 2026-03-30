@@ -451,19 +451,23 @@ export const getCotizacionById = async (req: Request, res: Response) => {
             } catch (e) { console.log('Error cargando paquete:', e); }
         }
         
-        // ========== CARGAR DATOS DE VENTA Y COMPROBANTES (si está vendida) ==========
+        // ========== CARGAR DATOS DE VENTA Y COMPROBANTES ==========
         let venta = null;
         let comprobantesPago: any[] = [];
         
-        if (cotizacion?.estado === 'vendida') {
-            try {
-                // Buscar venta asociada
-                const { data: v } = await supabase
-                    .from('ventas')
-                    .select('*')
-                    .eq('cotizacion_id', id)
-                    .single();
-                venta = v;
+        // SIEMPRE verificar si existe venta asociada (incluso si estado no es 'vendida')
+        // Esto maneja casos de inconsistencia donde la venta existe pero la cotización no se actualizó
+        try {
+            const { data: v } = await supabase
+                .from('ventas')
+                .select('*')
+                .eq('cotizacion_id', id)
+                .maybeSingle();  // Usar maybeSingle para no fallar si no existe
+            venta = v;
+            
+            if (venta && cotizacion?.estado !== 'vendida') {
+                console.warn(`[getCotizacionById] INCONSISTENCIA: Venta ${venta.id} existe pero cotización ${id} está en estado ${cotizacion?.estado}`);
+            }
                 
                 if (venta) {
                     // Verificar archivos físicos existentes
@@ -531,9 +535,9 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                         console.log('Tabla comprobantes_pago no disponible:', e);
                     }
                 }
-            } catch (e) { 
-                console.log('Error cargando venta/comprobantes:', e); 
             }
+        } catch (e) { 
+            console.log('Error cargando venta/comprobantes:', e); 
         }
         
         // Mapear vuelos para compatibilidad de campos (origen_nombre -> origen_ciudad, etc.)
@@ -764,7 +768,7 @@ export const convertirAVenta = async (req: Request, res: Response) => {
             });
         }
 
-        // Actualizar cotización con datos de pago
+        // Actualizar cotización con datos de pago - ESTO ES CRÍTICO
         console.log('Actualizando cotización a vendida...');
         const { error: updateError } = await supabase
             .from('cotizaciones')
@@ -776,16 +780,30 @@ export const convertirAVenta = async (req: Request, res: Response) => {
                 tipo_pago: tipo_pago || 'pendiente',
                 medio_pago: medio_pago || null,
                 observaciones_pago: observaciones_pago || null,
-                fecha_pago: pago_realizado ? new Date().toISOString() : null
+                fecha_pago: pago_realizado ? new Date().toISOString() : null,
+                venta_id: venta.id  // <-- Guardar referencia a la venta
             })
             .eq('id', id);
         
         if (updateError) {
-            console.error('Error actualizando cotización:', updateError);
-            // No fallamos la venta si esto falla, solo logueamos
-        } else {
-            console.log('Cotización actualizada a vendida exitosamente');
+            console.error('ERROR CRÍTICO: Venta creada pero cotización no actualizada:', updateError);
+            // Intentar compensación: actualizar venta con estado especial
+            await supabase
+                .from('ventas')
+                .update({ 
+                    estado: 'pendiente_sync',
+                    notas: (venta.notas || '') + '\n\n[ERROR] La cotización no se pudo marcar como vendida. ID de cotización: ' + id
+                })
+                .eq('id', venta.id);
+                
+            return res.status(500).json({ 
+                error: 'Error crítico: La venta se creó pero no se pudo actualizar la cotización', 
+                venta_id: venta.id,
+                details: updateError.message
+            });
         }
+        
+        console.log('✅ Cotización actualizada a vendida exitosamente');
 
         // RESTAR CUPOS DISPONIBLES
         const nuevosCupos = (paquete.cupos_disponibles || 0) - cotizacion.num_pasajeros;
