@@ -840,10 +840,7 @@ export const convertirAVenta = async (req: Request, res: Response) => {
             .update({ cupos_disponibles: nuevosCupos })
             .eq('id', cotizacion.paquete_id);
 
-        // Preparar info de pago para respuesta
-        const montoPagadoNum = Number(monto_pagado) || 0;
-        const montoRestante = Math.max(0, cotizacion.precio_total - montoPagadoNum);
-        
+        // Usar montoPagadoNum y montoRestante ya calculados arriba
         res.status(201).json({ 
             message: 'Cotización convertida a venta exitosamente', 
             venta,
