@@ -584,6 +584,7 @@ export const convertirAVenta = async (req: Request, res: Response) => {
         tipo_pago, 
         medio_pago, 
         observaciones_pago,
+        fecha_pago_resto,
         datos_pasajeros 
     } = req.body;
     const user = (req as any).user;
@@ -767,21 +768,49 @@ export const convertirAVenta = async (req: Request, res: Response) => {
             });
         }
 
+        // Calcular monto restante
+        const montoPagadoNum = Number(monto_pagado) || 0;
+        const montoRestante = Math.max(0, cotizacion.precio_total - montoPagadoNum);
+        
+        console.log('💰 Datos de pago:', {
+            pago_realizado,
+            monto_pagado: montoPagadoNum,
+            monto_restante: montoRestante,
+            tipo_pago,
+            fecha_pago_resto
+        });
+        
         // Actualizar cotización con datos de pago - ESTO ES CRÍTICO
         console.log('Actualizando cotización a vendida...');
+        
+        const updateData: any = { 
+            estado: 'vendida',
+            fecha_conversion: new Date().toISOString(),
+            venta_id: venta.id
+        };
+        
+        // Solo agregar campos de pago si se proporcionaron
+        if (pago_realizado !== undefined) {
+            updateData.pago_realizado = pago_realizado;
+            updateData.monto_pagado = montoPagadoNum;
+            updateData.monto_restante = montoRestante;
+            updateData.tipo_pago = tipo_pago || (montoRestante > 0 ? 'parcial' : 'total');
+            updateData.medio_pago = medio_pago || null;
+            updateData.observaciones_pago = observaciones_pago || null;
+            
+            if (pago_realizado) {
+                updateData.fecha_pago = new Date().toISOString();
+                
+                // Fecha pago resto solo si hay restante y se proporcionó
+                if (montoRestante > 0 && fecha_pago_resto) {
+                    updateData.fecha_pago_resto = fecha_pago_resto;
+                }
+            }
+        }
+        
         const { error: updateError } = await supabase
             .from('cotizaciones')
-            .update({ 
-                estado: 'vendida',
-                fecha_conversion: new Date().toISOString(),
-                pago_realizado: pago_realizado || false,
-                monto_pagado: pago_realizado ? monto_pagado : null,
-                tipo_pago: tipo_pago || 'pendiente',
-                medio_pago: medio_pago || null,
-                observaciones_pago: observaciones_pago || null,
-                fecha_pago: pago_realizado ? new Date().toISOString() : null,
-                venta_id: venta.id  // <-- Guardar referencia a la venta
-            })
+            .update(updateData)
             .eq('id', id);
         
         if (updateError) {
@@ -811,11 +840,22 @@ export const convertirAVenta = async (req: Request, res: Response) => {
             .update({ cupos_disponibles: nuevosCupos })
             .eq('id', cotizacion.paquete_id);
 
+        // Preparar info de pago para respuesta
+        const montoPagadoNum = Number(monto_pagado) || 0;
+        const montoRestante = Math.max(0, cotizacion.precio_total - montoPagadoNum);
+        
         res.status(201).json({ 
             message: 'Cotización convertida a venta exitosamente', 
             venta,
             cupos_restantes: nuevosCupos,
-            comprobantes_count: comprobantes?.length || 0
+            comprobantes_count: comprobantes?.length || 0,
+            pago_info: {
+                monto_pagado: montoPagadoNum,
+                monto_restante: montoRestante,
+                tipo_pago: tipo_pago || (montoRestante > 0 ? 'parcial' : 'total'),
+                fecha_pago_resto: montoRestante > 0 ? fecha_pago_resto : null,
+                es_pago_total: montoRestante === 0
+            }
         });
     } catch (error: any) {
         console.error('=== ERROR CONVERTIR A VENTA ===');
