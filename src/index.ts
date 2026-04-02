@@ -4,10 +4,22 @@ import dotenv from 'dotenv';
 import pino from 'pino';
 import pinoPretty from 'pino-pretty';
 import path from 'path';
+import fs from 'fs';
 import { supabase } from './config/supabase';
 import { apiLimiter } from './middleware/rateLimiter';
 
 dotenv.config();
+
+// Crear directorios de uploads automáticamente
+const storagePath = process.env.STORAGE_PATH || './storage/uploads';
+const dirs = ['comprobantes', 'vouchers'];
+dirs.forEach(dir => {
+    const fullPath = path.join(storagePath, dir);
+    if (!fs.existsSync(fullPath)) {
+        fs.mkdirSync(fullPath, { recursive: true });
+        console.log(`[INIT] Created directory: ${fullPath}`);
+    }
+});
 
 const logger = pino(pinoPretty());
 const app = express();
@@ -21,7 +33,6 @@ app.use(cors());
 // app.use(express.json());
 
 // Servir archivos estáticos (comprobantes de pago y documentos)
-const storagePath = process.env.STORAGE_PATH || './storage/uploads';
 app.use('/uploads', express.static(storagePath));
 
 // Rate limiting general para toda la API
