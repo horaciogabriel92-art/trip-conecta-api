@@ -632,7 +632,7 @@ router.post('/voucher/:ventaId', authenticateToken, uploadVoucher.single('vouche
       .insert({
         venta_id: ventaId,
         cotizacion_id: venta.cotizacion_id,
-        tipo_documento: tipo_documento || 'otro',
+        tipo: tipo_documento || 'otro',
         nombre_archivo: req.file.originalname,
         ruta_archivo: req.file.filename,
         descripcion: descripcion || null,
@@ -658,7 +658,7 @@ router.post('/voucher/:ventaId', authenticateToken, uploadVoucher.single('vouche
       documento: {
         id: documento.id,
         nombre_archivo: req.file.originalname,
-        tipo_documento: tipo_documento || 'otro',
+        tipo: tipo_documento || 'otro',
         url: `/uploads/vouchers/${req.file.filename}`
       }
     });
