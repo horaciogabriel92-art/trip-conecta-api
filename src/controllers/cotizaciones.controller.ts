@@ -744,7 +744,7 @@ export const convertirAVenta = async (req: Request, res: Response) => {
                 precio_total: cotizacion.precio_total,
                 comision_porcentaje: 12,
                 comision_monto: cotizacion.comision_vendedor || (cotizacion.precio_total * 0.12),
-                estado: 'confirmada',
+                estado: 'pendiente',  // Inicialmente pendiente hasta que admin suba vouchers
                 notas: notasVenta || null,
                 metodo_pago: medio_pago || null,
                 // Campos heredados de pago

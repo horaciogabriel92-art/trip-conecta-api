@@ -558,5 +558,278 @@ router.get('/debug/comprobantes-files', async (req, res) => {
   }
 });
 
+// ============================================
+// VOUCHERS DE VIAJE (Documentos de viaje)
+// ============================================
+
+// Configurar multer para vouchers
+const storageVouchers = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = process.env.STORAGE_PATH || './storage/uploads';
+    const vouchersDir = path.join(uploadDir, 'vouchers');
+    
+    if (!fs.existsSync(vouchersDir)) {
+      fs.mkdirSync(vouchersDir, { recursive: true });
+    }
+    
+    cb(null, vouchersDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
+    const ext = path.extname(file.originalname);
+    cb(null, `voucher-${uniqueSuffix}${ext}`);
+  }
+});
+
+const uploadVoucher = multer({
+  storage: storageVouchers,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    const allowedMimes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+    if (allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Solo se permiten imágenes (JPG, PNG, WebP) o PDFs'));
+    }
+  }
+});
+
+// POST /api/upload/voucher/:ventaId - Subir voucher (admin only)
+router.post('/voucher/:ventaId', authenticateToken, uploadVoucher.single('voucher'), async (req, res) => {
+  try {
+    const { ventaId } = req.params;
+    const userId = (req as any).user.userId;
+    const userRole = (req as any).user.role;
+    const { tipo_documento, descripcion } = req.body;
+    
+    // Solo admin puede subir vouchers
+    if (userRole !== 'admin') {
+      if (req.file && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+      return res.status(403).json({ error: 'Solo administradores pueden subir vouchers' });
+    }
+    
+    if (!req.file) {
+      return res.status(400).json({ error: 'No se proporcionó ningún archivo' });
+    }
+    
+    // Verificar que la venta existe
+    const { data: venta, error: ventaError } = await supabase
+      .from('ventas')
+      .select('id, cotizacion_id')
+      .eq('id', ventaId)
+      .single();
+    
+    if (ventaError || !venta) {
+      fs.unlinkSync(req.file.path);
+      return res.status(404).json({ error: 'Venta no encontrada' });
+    }
+    
+    // Guardar en BD
+    const { data: documento, error: insertError } = await supabase
+      .from('documentos_viaje')
+      .insert({
+        venta_id: ventaId,
+        cotizacion_id: venta.cotizacion_id,
+        tipo_documento: tipo_documento || 'otro',
+        nombre_archivo: req.file.originalname,
+        ruta_archivo: req.file.filename,
+        descripcion: descripcion || null,
+        subido_por: userId
+      })
+      .select()
+      .single();
+    
+    if (insertError) {
+      fs.unlinkSync(req.file.path);
+      console.error('Error guardando voucher:', insertError);
+      return res.status(500).json({ error: 'Error al guardar voucher', details: insertError.message });
+    }
+    
+    // ACTUALIZAR ESTADO DE VENTA A 'emitida'
+    await supabase
+      .from('ventas')
+      .update({ estado: 'emitida' })
+      .eq('id', ventaId);
+    
+    res.json({
+      message: 'Voucher subido exitosamente',
+      documento: {
+        id: documento.id,
+        nombre_archivo: req.file.originalname,
+        tipo_documento: tipo_documento || 'otro',
+        url: `/uploads/vouchers/${req.file.filename}`
+      }
+    });
+    
+  } catch (error: any) {
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    console.error('Error uploading voucher:', error);
+    res.status(500).json({ error: 'Error interno del servidor', details: error.message });
+  }
+});
+
+// GET /api/upload/vouchers/:ventaId - Listar vouchers
+router.get('/vouchers/:ventaId', authenticateToken, async (req, res) => {
+  try {
+    const { ventaId } = req.params;
+    const userId = (req as any).user.userId;
+    const userRole = (req as any).user.role;
+    
+    // Verificar que la venta existe
+    const { data: venta, error: ventaError } = await supabase
+      .from('ventas')
+      .select('id, vendedor_id')
+      .eq('id', ventaId)
+      .single();
+    
+    if (ventaError || !venta) {
+      return res.status(404).json({ error: 'Venta no encontrada' });
+    }
+    
+    // Verificar permisos (admin o vendedor dueño)
+    if (userRole !== 'admin' && venta.vendedor_id !== userId) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+    
+    // Obtener vouchers
+    const { data: vouchers, error } = await supabase
+      .from('documentos_viaje')
+      .select('*')
+      .eq('venta_id', ventaId)
+      .order('fecha_subida', { ascending: false });
+    
+    if (error) {
+      console.error('Error fetching vouchers:', error);
+      return res.status(500).json({ error: 'Error al obtener vouchers' });
+    }
+    
+    // Agregar URLs
+    const vouchersConUrl = vouchers?.map((v: any) => ({
+      ...v,
+      url: `/uploads/vouchers/${v.ruta_archivo}`
+    })) || [];
+    
+    res.json(vouchersConUrl);
+    
+  } catch (error: any) {
+    console.error('Error fetching vouchers:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// GET /api/upload/voucher/:id/download - Descargar voucher
+router.get('/voucher/:id/download', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = (req as any).user.userId;
+    const userRole = (req as any).user.role;
+    
+    // Obtener voucher
+    const { data: voucher, error } = await supabase
+      .from('documentos_viaje')
+      .select('*, ventas!inner(vendedor_id)')
+      .eq('id', id)
+      .single();
+    
+    if (error || !voucher) {
+      return res.status(404).json({ error: 'Voucher no encontrado' });
+    }
+    
+    // Verificar permisos
+    if (userRole !== 'admin' && voucher.ventas.vendedor_id !== userId) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+    
+    const uploadDir = process.env.STORAGE_PATH || './storage/uploads';
+    const filePath = path.join(uploadDir, 'vouchers', voucher.ruta_archivo);
+    
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Archivo no encontrado' });
+    }
+    
+    const ext = path.extname(voucher.ruta_archivo).toLowerCase();
+    const contentType = ext === '.pdf' ? 'application/pdf' : 
+                        ext === '.png' ? 'image/png' :
+                        ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' :
+                        'application/octet-stream';
+    
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `inline; filename="${voucher.nombre_archivo}"`);
+    
+    const fileStream = fs.createReadStream(filePath);
+    fileStream.pipe(res);
+    
+  } catch (error: any) {
+    console.error('Error downloading voucher:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// DELETE /api/upload/voucher/:id - Eliminar voucher (admin only)
+router.delete('/voucher/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userRole = (req as any).user.role;
+    
+    // Solo admin puede eliminar
+    if (userRole !== 'admin') {
+      return res.status(403).json({ error: 'Solo administradores pueden eliminar vouchers' });
+    }
+    
+    // Obtener voucher
+    const { data: voucher, error } = await supabase
+      .from('documentos_viaje')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (error || !voucher) {
+      return res.status(404).json({ error: 'Voucher no encontrado' });
+    }
+    
+    // Eliminar archivo físico
+    const uploadDir = process.env.STORAGE_PATH || './storage/uploads';
+    const filePath = path.join(uploadDir, 'vouchers', voucher.ruta_archivo);
+    
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+    
+    // Eliminar de BD
+    const { error: deleteError } = await supabase
+      .from('documentos_viaje')
+      .delete()
+      .eq('id', id);
+    
+    if (deleteError) {
+      console.error('Error deleting voucher:', deleteError);
+      return res.status(500).json({ error: 'Error al eliminar voucher' });
+    }
+    
+    // Verificar si quedan vouchers, si no, volver a estado 'pendiente'
+    const { data: remainingVouchers } = await supabase
+      .from('documentos_viaje')
+      .select('id')
+      .eq('venta_id', voucher.venta_id);
+    
+    if (!remainingVouchers || remainingVouchers.length === 0) {
+      await supabase
+        .from('ventas')
+        .update({ estado: 'pendiente' })
+        .eq('id', voucher.venta_id);
+    }
+    
+    res.json({ message: 'Voucher eliminado exitosamente' });
+    
+  } catch (error: any) {
+    console.error('Error deleting voucher:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
 console.log('[UPLOAD ROUTES] Upload routes loaded successfully');
 export default router;
