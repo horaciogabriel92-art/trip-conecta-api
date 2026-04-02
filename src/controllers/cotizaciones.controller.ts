@@ -654,23 +654,28 @@ export const convertirAVenta = async (req: Request, res: Response) => {
             }
         }
 
-        // Verificar que haya cupos disponibles
-        const { data: paquete, error: paqueteError } = await supabase
-            .from('paquetes')
-            .select('titulo, cupos_disponibles, cupos_totales')
-            .eq('id', cotizacion.paquete_id)
-            .single();
+        // Verificar cupos solo si viene de un paquete (cotizaciones manuales no tienen paquete_id)
+        let paquete = null;
+        if (cotizacion.paquete_id) {
+            const { data: paqueteData, error: paqueteError } = await supabase
+                .from('paquetes')
+                .select('titulo, cupos_disponibles, cupos_totales')
+                .eq('id', cotizacion.paquete_id)
+                .single();
 
-        if (paqueteError || !paquete) {
-            return res.status(404).json({ error: 'Paquete no encontrado' });
-        }
+            if (paqueteError || !paqueteData) {
+                return res.status(404).json({ error: 'Paquete no encontrado' });
+            }
 
-        if ((paquete.cupos_disponibles || 0) < cotizacion.num_pasajeros) {
-            return res.status(400).json({ 
-                error: 'No hay cupos disponibles', 
-                disponibles: paquete.cupos_disponibles,
-                solicitados: cotizacion.num_pasajeros
-            });
+            if ((paqueteData.cupos_disponibles || 0) < cotizacion.num_pasajeros) {
+                return res.status(400).json({ 
+                    error: 'No hay cupos disponibles', 
+                    disponibles: paqueteData.cupos_disponibles,
+                    solicitados: cotizacion.num_pasajeros
+                });
+            }
+            
+            paquete = paqueteData;
         }
 
         // Obtener comprobantes de pago asociados
@@ -738,7 +743,7 @@ export const convertirAVenta = async (req: Request, res: Response) => {
                 cliente_email: clienteEmail || null,
                 cliente_telefono: clienteTelefono || null,
                 paquete_id: cotizacion.paquete_id,
-                paquete_nombre: paquete?.titulo || 'Paquete',
+                paquete_nombre: paquete?.titulo || cotizacion.nombre_cotizacion || 'Viaje personalizado',
                 fecha_salida: cotizacion.fecha_salida,
                 num_pasajeros: cotizacion.num_pasajeros,
                 precio_total: cotizacion.precio_total,
@@ -833,12 +838,15 @@ export const convertirAVenta = async (req: Request, res: Response) => {
         
         console.log('✅ Cotización actualizada a vendida exitosamente');
 
-        // RESTAR CUPOS DISPONIBLES
-        const nuevosCupos = (paquete.cupos_disponibles || 0) - cotizacion.num_pasajeros;
-        await supabase
-            .from('paquetes')
-            .update({ cupos_disponibles: nuevosCupos })
-            .eq('id', cotizacion.paquete_id);
+        // RESTAR CUPOS DISPONIBLES (solo si viene de un paquete)
+        let nuevosCupos = null;
+        if (paquete && cotizacion.paquete_id) {
+            nuevosCupos = (paquete.cupos_disponibles || 0) - cotizacion.num_pasajeros;
+            await supabase
+                .from('paquetes')
+                .update({ cupos_disponibles: nuevosCupos })
+                .eq('id', cotizacion.paquete_id);
+        }
 
         // Usar montoPagadoNum y montoRestante ya calculados arriba
         res.status(201).json({ 
