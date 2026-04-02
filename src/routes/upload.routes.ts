@@ -631,7 +631,6 @@ router.post('/voucher/:ventaId', authenticateToken, uploadVoucher.single('vouche
       .from('documentos_viaje')
       .insert({
         venta_id: ventaId,
-        cotizacion_id: venta.cotizacion_id,
         tipo: tipo_documento || 'otro',
         nombre_archivo: req.file.originalname,
         ruta_archivo: req.file.filename,
