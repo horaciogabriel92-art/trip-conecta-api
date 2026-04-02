@@ -167,6 +167,11 @@ export const downloadDocumento = async (req: Request, res: Response) => {
             path.join(process.cwd(), filePath),
             path.join(uploadDir, filePath),
             path.join(uploadDir, 'vouchers', filename),
+            // Rutas específicas para Coolify/Hetzner
+            path.join('/app/storage/uploads', 'vouchers', filename),
+            path.join('/app/storage/uploads', filename),
+            path.join('/data/trip-conecta/uploads', 'vouchers', filename),
+            path.join('/data/trip-conecta/uploads', filename),
             path.join(process.cwd(), 'storage', 'uploads', 'vouchers', filename),
             path.join(process.cwd(), 'uploads', 'vouchers', filename),
         ];
