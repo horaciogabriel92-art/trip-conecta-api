@@ -159,17 +159,32 @@ export const downloadDocumento = async (req: Request, res: Response) => {
         
         // Intentar varias rutas posibles
         let filePath = documento.ruta_archivo;
-        if (!fs.existsSync(filePath)) {
-            filePath = path.join(process.cwd(), documento.ruta_archivo);
-        }
-        if (!fs.existsSync(filePath)) {
-            filePath = path.join(process.cwd(), 'storage', 'uploads', path.basename(documento.ruta_archivo));
+        const uploadDir = process.env.STORAGE_PATH || './storage/uploads';
+        const filename = path.basename(documento.ruta_archivo);
+        
+        const possiblePaths = [
+            filePath,
+            path.join(process.cwd(), filePath),
+            path.join(uploadDir, filePath),
+            path.join(uploadDir, 'vouchers', filename),
+            path.join(process.cwd(), 'storage', 'uploads', 'vouchers', filename),
+            path.join(process.cwd(), 'uploads', 'vouchers', filename),
+        ];
+        
+        let foundPath = null;
+        for (const tryPath of possiblePaths) {
+            if (fs.existsSync(tryPath)) {
+                foundPath = tryPath;
+                break;
+            }
         }
         
-        if (!fs.existsSync(filePath)) {
-            console.error('Archivo no encontrado en:', filePath);
+        if (!foundPath) {
+            console.error('Archivo no encontrado. Intentado rutas:', possiblePaths);
             return res.status(404).json({ error: 'Archivo no encontrado en servidor' });
         }
+        
+        filePath = foundPath;
 
         // Determinar content type
         const ext = path.extname(documento.nombre_archivo).toLowerCase();
