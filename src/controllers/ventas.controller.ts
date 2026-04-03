@@ -114,7 +114,7 @@ export const updateEstadoVenta = async (req: Request, res: Response) => {
 
 export const pagarComision = async (req: Request, res: Response) => {
     const { id } = req.params;
-    const { metodo_pago, referencia_pago, notas } = req.body;
+    const { metodo_pago, referencia_pago, notas } = req.body || {};
     const user = (req as any).user;
     
     try {
@@ -144,7 +144,7 @@ export const pagarComision = async (req: Request, res: Response) => {
             .update({ 
                 comision_estado: 'pagada',
                 fecha_pago_comision: new Date().toISOString(),
-                metodo_pago
+                metodo_pago: metodo_pago || null
             })
             .eq('id', id);
 
@@ -157,10 +157,10 @@ export const pagarComision = async (req: Request, res: Response) => {
                 vendedor_id: venta.vendedor_id,
                 venta_id: id,
                 monto: venta.comision_monto,
-                metodo_pago,
-                referencia_pago,
+                metodo_pago: metodo_pago || null,
+                referencia_pago: referencia_pago || null,
                 pagado_por: user.userId,
-                notas
+                notas: notas || null
             });
 
         if (pagoError) throw pagoError;

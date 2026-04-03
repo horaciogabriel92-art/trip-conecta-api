@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as clientesController from '../controllers/clientes.controller';
+import * as notasController from '../controllers/notas-cliente.controller';
 import { authenticateToken } from '../middleware/auth';
 
 const router = Router();
@@ -24,5 +25,11 @@ router.put('/:id', authenticateToken, clientesController.updateCliente);
 
 // Agregar pasajero a cliente
 router.post('/:id/pasajeros', authenticateToken, clientesController.addPasajero);
+
+// Notas del cliente
+router.get('/:cliente_id/notas', authenticateToken, notasController.getNotasByCliente);
+router.post('/:cliente_id/notas', authenticateToken, notasController.createNota);
+router.put('/notas/:id', authenticateToken, notasController.updateNota);
+router.delete('/notas/:id', authenticateToken, notasController.deleteNota);
 
 export default router;

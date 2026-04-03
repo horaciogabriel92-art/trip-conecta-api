@@ -149,14 +149,25 @@ export const createCliente = async (req: Request, res: Response) => {
         nombre,
         apellido,
         email,
+        email_alt,
         telefono,
         telefono_alt,
+        whatsapp,
         fecha_nacimiento,
         nacionalidad = 'Uruguay',
         direccion,
         ciudad,
         pais = 'Uruguay',
-        notas_crm
+        notas_crm,
+        // Campos CRM nuevos
+        preferencias_viaje,
+        temporada_preferida,
+        fuente_lead,
+        referido_por,
+        tags,
+        prioridad,
+        fecha_proximo_viaje_ideal,
+        estado
     } = req.body;
     
     const userId = (req as any).user.userId;
@@ -212,15 +223,26 @@ export const createCliente = async (req: Request, res: Response) => {
                 nombre,
                 apellido,
                 email,
+                email_alt,
                 telefono,
                 telefono_alt,
+                whatsapp,
                 fecha_nacimiento,
                 nacionalidad,
                 direccion,
                 ciudad,
                 pais,
                 registrado_por: userId,
-                notas_crm
+                notas_crm,
+                // Campos CRM nuevos
+                preferencias_viaje: preferencias_viaje ? JSON.stringify(preferencias_viaje) : null,
+                temporada_preferida,
+                fuente_lead,
+                referido_por,
+                tags: tags || [],
+                prioridad: prioridad || 'MEDIA',
+                fecha_proximo_viaje_ideal,
+                estado: estado || 'ACTIVO'
             })
             .select()
             .single();
@@ -285,9 +307,10 @@ export const updateCliente = async (req: Request, res: Response) => {
     
     // Campos permitidos para actualizar
     const allowedFields = [
-        'nombre', 'apellido', 'email', 'telefono', 'telefono_alt',
-        'fecha_nacimiento', 'nacionalidad', 'direccion', 'ciudad', 'pais',
-        'notas_crm', 'estado'
+        'nombre', 'apellido', 'email', 'email_alt', 'telefono', 'telefono_alt', 
+        'whatsapp', 'fecha_nacimiento', 'nacionalidad', 'direccion', 'ciudad', 
+        'pais', 'notas_crm', 'estado', 'preferencias_viaje', 'temporada_preferida',
+        'fuente_lead', 'referido_por', 'tags', 'prioridad', 'fecha_proximo_viaje_ideal'
     ];
     
     const filteredUpdates: any = {};
