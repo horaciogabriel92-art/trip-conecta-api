@@ -321,6 +321,8 @@ export const updateCliente = async (req: Request, res: Response) => {
     });
     
     try {
+        console.log('[updateCliente] Updating cliente:', id, 'with fields:', Object.keys(filteredUpdates));
+        
         const { data: cliente, error } = await supabase
             .from('clientes')
             .update({
@@ -331,7 +333,13 @@ export const updateCliente = async (req: Request, res: Response) => {
             .select()
             .single();
         
-        if (error || !cliente) {
+        if (error) {
+            console.error('[updateCliente] Supabase error:', error);
+            return res.status(400).json({ error: 'Error actualizando cliente', details: error.message });
+        }
+        
+        if (!cliente) {
+            console.error('[updateCliente] Cliente no encontrado:', id);
             return res.status(404).json({ error: 'Cliente no encontrado' });
         }
         
