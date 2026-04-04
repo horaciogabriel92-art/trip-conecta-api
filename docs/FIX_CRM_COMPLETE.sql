@@ -1,9 +1,18 @@
 -- FIX COMPLETO PARA CRM CLIENTES
 -- Ejecutar en Supabase SQL Editor
+-- 
+-- HISTORIAL DE CAMBIOS:
+-- 2026-04-03: Agregada columna es_privada a notas_cliente (ejecutado)
+-- ============================================
 
 -- ============================================
 -- 1. FIX NOTAS_CLIENTE - Agregar columna es_privada
+-- STATUS: ✅ EJECUTADO - 2026-04-03
 -- ============================================
+-- NOTA: Este cambio ya fue aplicado manualmente por el usuario
+-- Se mantiene aquí como referencia/documentación
+
+/*
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -16,6 +25,9 @@ BEGIN
         RAISE NOTICE '✓ Columna es_privada ya existe';
     END IF;
 END $$;
+*/
+
+SELECT '✅ Columna es_privada ya existe en notas_cliente (aplicado el 2026-04-03)' as status;
 
 -- ============================================
 -- 2. Verificar todas las columnas de notas_cliente

@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS public.notas_cliente (
     vendedor_id uuid NOT NULL REFERENCES public.users(id),
     contenido text NOT NULL,
     tipo varchar(20) DEFAULT 'general' CHECK (tipo IN ('general', 'llamada', 'email', 'whatsapp', 'reunion', 'sistema')),
+    es_privada boolean DEFAULT false,  -- Notas privadas solo visibles por el creador y admin
     created_at timestamptz DEFAULT now(),
     updated_at timestamptz DEFAULT now()
 );
@@ -171,14 +172,51 @@ CREATE POLICY "Vendedores ven sus pagos" ON public.pagos_comisiones
 -- NOTAS DE CLIENTE
 ALTER TABLE public.notas_cliente ENABLE ROW LEVEL SECURITY;
 
+-- Política SELECT: Vendedores ven notas públicas de sus clientes + sus propias notas privadas
 CREATE POLICY "Vendedores ven notas de sus clientes" ON public.notas_cliente
     FOR SELECT USING (
-        EXISTS (
-            SELECT 1 FROM public.clientes c
-            JOIN public.cotizaciones cot ON cot.cliente_id = c.id
-            WHERE cot.vendedor_id = auth.uid()
-            AND c.id = notas_cliente.cliente_id
+        -- Notas públicas de clientes asignados
+        (
+            es_privada = false
+            AND EXISTS (
+                SELECT 1 FROM public.clientes c
+                JOIN public.cotizaciones cot ON cot.cliente_id = c.id
+                WHERE cot.vendedor_id = auth.uid()
+                AND c.id = notas_cliente.cliente_id
+            )
         )
+        -- Notas privadas solo si es el creador
+        OR (
+            es_privada = true 
+            AND vendedor_id = auth.uid()
+        )
+        -- Admin ve todo
+        OR EXISTS (
+            SELECT 1 FROM public.users WHERE id = auth.uid() AND rol = 'admin'
+        )
+    );
+
+-- Política INSERT: Solo pueden crear notas asignadas a ellos mismos
+CREATE POLICY "Vendedores crean notas" ON public.notas_cliente
+    FOR INSERT WITH CHECK (
+        vendedor_id = auth.uid()
+        OR EXISTS (
+            SELECT 1 FROM public.users WHERE id = auth.uid() AND rol = 'admin'
+        )
+    );
+
+-- Política UPDATE/DELETE: Solo el creador o admin pueden modificar/eliminar
+CREATE POLICY "Vendedores actualizan sus notas" ON public.notas_cliente
+    FOR UPDATE USING (
+        vendedor_id = auth.uid()
+        OR EXISTS (
+            SELECT 1 FROM public.users WHERE id = auth.uid() AND rol = 'admin'
+        )
+    );
+
+CREATE POLICY "Vendedores eliminan sus notas" ON public.notas_cliente
+    FOR DELETE USING (
+        vendedor_id = auth.uid()
         OR EXISTS (
             SELECT 1 FROM public.users WHERE id = auth.uid() AND rol = 'admin'
         )
