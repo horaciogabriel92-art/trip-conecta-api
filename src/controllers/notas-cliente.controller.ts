@@ -6,6 +6,7 @@ import { supabase } from '../config/supabase';
  * GET /clientes/:cliente_id/notas
  */
 export const getNotasByCliente = async (req: Request, res: Response) => {
+    console.log('[getNotasByCliente] Ruta ejecutada. Params:', req.params);
     const cliente_id = req.params.id;
     const userId = (req as any).user.userId;
     const userRole = (req as any).user.rol;
