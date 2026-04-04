@@ -27,7 +27,7 @@ export const getNotasByCliente = async (req: Request, res: Response) => {
             .from('notas_cliente')
             .select(`
                 *,
-                vendedor:vendedor_id (id, nombre, apellido, avatar_url)
+                vendedor:vendedor_id (id, nombre, apellido)
             `)
             .eq('cliente_id', cliente_id)
             .order('created_at', { ascending: false });
@@ -89,7 +89,7 @@ export const createNota = async (req: Request, res: Response) => {
             })
             .select(`
                 *,
-                vendedor:vendedor_id (id, nombre, apellido, avatar_url)
+                vendedor:vendedor_id (id, nombre, apellido)
             `)
             .single();
 
@@ -153,7 +153,7 @@ export const updateNota = async (req: Request, res: Response) => {
             .eq('id', id)
             .select(`
                 *,
-                vendedor:vendedor_id (id, nombre, apellido, avatar_url)
+                vendedor:vendedor_id (id, nombre, apellido)
             `)
             .single();
 
