@@ -76,6 +76,8 @@ export const createNota = async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Cliente no encontrado' });
         }
 
+        console.log('[createNota] Insertando nota:', { cliente_id, vendedor_id: userId, tipo, es_privada });
+        
         const { data: nota, error } = await supabase
             .from('notas_cliente')
             .insert({
@@ -92,8 +94,12 @@ export const createNota = async (req: Request, res: Response) => {
             .single();
 
         if (error || !nota) {
-            console.error('Error creating nota:', error);
-            return res.status(500).json({ error: 'Error al crear nota' });
+            console.error('[createNota] Error:', error);
+            return res.status(500).json({ 
+                error: 'Error al crear nota', 
+                details: error?.message || 'Unknown error',
+                code: error?.code || 'UNKNOWN'
+            });
         }
 
         // Actualizar fecha de última interacción del cliente
