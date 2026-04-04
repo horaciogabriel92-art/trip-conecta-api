@@ -13,15 +13,24 @@ export const getNotasByCliente = async (req: Request, res: Response) => {
 
     try {
         // Verificar acceso al cliente (solo admin ve todas las notas)
+        console.log('[getNotasByCliente] Verificando cliente:', cliente_id);
         const { data: cliente, error: clienteError } = await supabase
             .from('clientes')
-            .select('id, asignado_a')
+            .select('id')
             .eq('id', cliente_id)
             .single();
 
-        if (clienteError || !cliente) {
+        if (clienteError) {
+            console.error('[getNotasByCliente] Error buscando cliente:', clienteError);
+            return res.status(404).json({ error: 'Cliente no encontrado', details: clienteError.message });
+        }
+        
+        if (!cliente) {
+            console.error('[getNotasByCliente] Cliente no existe:', cliente_id);
             return res.status(404).json({ error: 'Cliente no encontrado' });
         }
+        
+        console.log('[getNotasByCliente] Cliente encontrado:', cliente);
 
         // Construir query base
         let query = supabase
