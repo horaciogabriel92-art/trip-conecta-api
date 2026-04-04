@@ -6,7 +6,7 @@ import { supabase } from '../config/supabase';
  * GET /clientes/:cliente_id/notas
  */
 export const getNotasByCliente = async (req: Request, res: Response) => {
-    const { cliente_id } = req.params;
+    const cliente_id = req.params.id;
     const userId = (req as any).user.userId;
     const userRole = (req as any).user.rol;
 
@@ -56,7 +56,7 @@ export const getNotasByCliente = async (req: Request, res: Response) => {
  * POST /clientes/:cliente_id/notas
  */
 export const createNota = async (req: Request, res: Response) => {
-    const { cliente_id } = req.params;
+    const cliente_id = req.params.id;
     const { contenido, tipo = 'general', es_privada = false } = req.body;
     const userId = (req as any).user.userId;
 

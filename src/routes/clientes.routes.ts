@@ -11,14 +11,27 @@ router.get('/', authenticateToken, clientesController.getClientes);
 // Buscar clientes (endpoint específico para búsqueda rápida)
 router.get('/buscar', authenticateToken, clientesController.buscarClientes);
 
-// Obtener pasajeros de un cliente
+// ============================================
+// RUTAS ESPECÍFICAS (deben ir ANTES de /:id)
+// ============================================
+
+// Notas del cliente
+router.get('/:id/notas', authenticateToken, notasController.getNotasByCliente);
+router.post('/:id/notas', authenticateToken, notasController.createNota);
+
+// Pasajeros del cliente
 router.get('/:id/pasajeros', authenticateToken, clientesController.getPasajerosByCliente);
+router.post('/:id/pasajeros', authenticateToken, clientesController.addPasajero);
 
-// Notas del cliente - DEBEN IR ANTES de /:id
-router.get('/:cliente_id/notas', authenticateToken, notasController.getNotasByCliente);
-router.post('/:cliente_id/notas', authenticateToken, notasController.createNota);
+// Notas - update y delete (rutas planas sin nested params)
+router.put('/notas/:id', authenticateToken, notasController.updateNota);
+router.delete('/notas/:id', authenticateToken, notasController.deleteNota);
 
-// Obtener cliente por ID (debe ir DESPUÉS de rutas específicas como /:id/notas)
+// ============================================
+// RUTAS GENÉRICAS /:id (deben ir al FINAL)
+// ============================================
+
+// Obtener cliente por ID
 router.get('/:id', authenticateToken, clientesController.getClienteById);
 
 // Crear nuevo cliente
@@ -26,12 +39,5 @@ router.post('/', authenticateToken, clientesController.createCliente);
 
 // Actualizar cliente
 router.put('/:id', authenticateToken, clientesController.updateCliente);
-
-// Agregar pasajero a cliente
-router.post('/:id/pasajeros', authenticateToken, clientesController.addPasajero);
-
-// Notas - update y delete (rutas diferentes)
-router.put('/notas/:id', authenticateToken, notasController.updateNota);
-router.delete('/notas/:id', authenticateToken, notasController.deleteNota);
 
 export default router;
