@@ -12,11 +12,17 @@ import { supabase } from '../config/supabase';
 export const getClientes = async (req: Request, res: Response) => {
     const { q, page = '1', limit = '20' } = req.query;
     const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
+    const user = (req as any).user;
     
     try {
         let query = supabase
             .from('clientes')
             .select('*', { count: 'exact' });
+        
+        // Si es vendedor (no admin), solo ve sus clientes
+        if (user?.role !== 'admin') {
+            query = query.eq('registrado_por', user?.userId);
+        }
         
         // Búsqueda fuzzy si hay query
         if (q && q !== '') {
@@ -54,6 +60,7 @@ export const getClientes = async (req: Request, res: Response) => {
  */
 export const buscarClientes = async (req: Request, res: Response) => {
     const { q } = req.query;
+    const user = (req as any).user;
     
     if (!q || q === '') {
         return res.status(400).json({ error: 'Query de búsqueda requerida' });
@@ -61,11 +68,17 @@ export const buscarClientes = async (req: Request, res: Response) => {
     
     try {
         const searchTerm = `%${q}%`;
-        const { data, error } = await supabase
+        let dbQuery = supabase
             .from('clientes')
             .select('id, nombre, apellido, email, telefono, tipo_documento, documento')
-            .or(`nombre.ilike.${searchTerm},apellido.ilike.${searchTerm},email.ilike.${searchTerm},documento.ilike.${searchTerm}`)
-            .limit(10);
+            .or(`nombre.ilike.${searchTerm},apellido.ilike.${searchTerm},email.ilike.${searchTerm},documento.ilike.${searchTerm}`);
+        
+        // Si es vendedor (no admin), solo busca en sus clientes
+        if (user?.role !== 'admin') {
+            dbQuery = dbQuery.eq('registrado_por', user?.userId);
+        }
+        
+        const { data, error } = await dbQuery.limit(10);
         
         if (error) {
             console.error('Error buscando clientes:', error);
@@ -85,6 +98,7 @@ export const buscarClientes = async (req: Request, res: Response) => {
  */
 export const getClienteById = async (req: Request, res: Response) => {
     const { id } = req.params;
+    const user = (req as any).user;
     
     try {
         // Cliente
@@ -96,6 +110,11 @@ export const getClienteById = async (req: Request, res: Response) => {
         
         if (clienteError || !cliente) {
             return res.status(404).json({ error: 'Cliente no encontrado' });
+        }
+        
+        // Si es vendedor (no admin), verificar que sea su cliente
+        if (user?.role !== 'admin' && cliente.registrado_por !== user?.userId) {
+            return res.status(403).json({ error: 'No autorizado para ver este cliente' });
         }
         
         // Pasajeros asociados (perfiles de viajeros)
@@ -303,7 +322,25 @@ export const createCliente = async (req: Request, res: Response) => {
 export const updateCliente = async (req: Request, res: Response) => {
     const { id } = req.params;
     const updates = req.body;
-    const userId = (req as any).user.userId;
+    const user = (req as any).user;
+    const userId = user?.userId;
+    
+    // Verificar que el vendedor pueda editar este cliente
+    if (user?.role !== 'admin') {
+        const { data: clienteCheck, error: checkError } = await supabase
+            .from('clientes')
+            .select('registrado_por')
+            .eq('id', id)
+            .single();
+        
+        if (checkError || !clienteCheck) {
+            return res.status(404).json({ error: 'Cliente no encontrado' });
+        }
+        
+        if (clienteCheck.registrado_por !== userId) {
+            return res.status(403).json({ error: 'No autorizado para editar este cliente' });
+        }
+    }
     
     // Campos permitidos para actualizar
     const allowedFields = [
