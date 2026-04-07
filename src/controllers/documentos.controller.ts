@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
+import path from 'path';
 
 export const uploadDocumento = async (req: Request, res: Response) => {
     const { venta_id, tipo, descripcion } = req.body;
