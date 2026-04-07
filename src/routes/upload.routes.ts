@@ -291,10 +291,27 @@ router.get('/comprobante-pago/:id/download', authenticateToken, async (req, res)
       return res.status(403).json({ error: 'No autorizado' });
     }
 
+    // Buscar archivo en múltiples rutas posibles
     const uploadDir = process.env.STORAGE_PATH || './storage/uploads';
-    const filePath = path.join(uploadDir, 'comprobantes', comprobante.ruta_archivo);
-
-    if (!fs.existsSync(filePath)) {
+    const filename = comprobante.ruta_archivo;
+    
+    const possiblePaths = [
+      path.join(uploadDir, 'comprobantes', filename),
+      path.join('/app/storage/uploads', 'comprobantes', filename),
+      path.join('/data/trip-conecta/uploads', 'comprobantes', filename),
+      path.join(process.cwd(), 'storage', 'uploads', 'comprobantes', filename),
+    ];
+    
+    let filePath = null;
+    for (const tryPath of possiblePaths) {
+      if (fs.existsSync(tryPath)) {
+        filePath = tryPath;
+        break;
+      }
+    }
+    
+    if (!filePath) {
+      console.error('[Download Comprobante] Archivo no encontrado. Intentado:', possiblePaths);
       return res.status(404).json({ error: 'Archivo no encontrado' });
     }
 

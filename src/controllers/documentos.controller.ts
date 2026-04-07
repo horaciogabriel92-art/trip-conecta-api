@@ -27,9 +27,9 @@ export const uploadDocumento = async (req: Request, res: Response) => {
             return res.status(403).json({ error: 'No autorizado' });
         }
 
-        // Guardar referencia del archivo
-        // Nota: En producción, los archivos deberían ir a S3 o Supabase Storage
-        const ruta_archivo = file.path || `/storage/uploads/${file.filename}`;
+        // Guardar solo el nombre del archivo (no la ruta completa)
+        // Esto permite que funcione en cualquier entorno (dev, coolify, etc.)
+        const ruta_archivo = file.filename || path.basename(file.path || '');
 
         const { data: documento, error } = await supabase
             .from('documentos_viaje')
@@ -157,23 +157,20 @@ export const downloadDocumento = async (req: Request, res: Response) => {
         const fs = require('fs');
         const path = require('path');
         
-        // Intentar varias rutas posibles
-        let filePath = documento.ruta_archivo;
+        // Construir rutas posibles (solo nombre de archivo guardado en BD)
+        const filename = documento.ruta_archivo;
         const uploadDir = process.env.STORAGE_PATH || './storage/uploads';
-        const filename = path.basename(documento.ruta_archivo);
         
         const possiblePaths = [
-            filePath,
-            path.join(process.cwd(), filePath),
-            path.join(uploadDir, filePath),
-            path.join(uploadDir, 'vouchers', filename),
-            // Rutas específicas para Coolify/Hetzner
-            path.join('/app/storage/uploads', 'vouchers', filename),
+            // Primero buscar en la ruta directa (donde multer guarda los archivos)
+            path.join(uploadDir, filename),
             path.join('/app/storage/uploads', filename),
-            path.join('/data/trip-conecta/uploads', 'vouchers', filename),
             path.join('/data/trip-conecta/uploads', filename),
-            path.join(process.cwd(), 'storage', 'uploads', 'vouchers', filename),
-            path.join(process.cwd(), 'uploads', 'vouchers', filename),
+            path.join(process.cwd(), 'storage', 'uploads', filename),
+            // También probar en subcarpetas (por compatibilidad con archivos antiguos)
+            path.join(uploadDir, 'vouchers', filename),
+            path.join('/app/storage/uploads', 'vouchers', filename),
+            path.join('/data/trip-conecta/uploads', 'vouchers', filename),
         ];
         
         let foundPath = null;
