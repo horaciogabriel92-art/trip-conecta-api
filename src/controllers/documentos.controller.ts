@@ -186,8 +186,6 @@ export const downloadDocumento = async (req: Request, res: Response) => {
             console.error('Archivo no encontrado. Intentado rutas:', possiblePaths);
             return res.status(404).json({ error: 'Archivo no encontrado en servidor' });
         }
-        
-        filePath = foundPath;
 
         // Determinar content type
         const ext = path.extname(documento.nombre_archivo).toLowerCase();
@@ -200,7 +198,7 @@ export const downloadDocumento = async (req: Request, res: Response) => {
         res.setHeader('Content-Disposition', `attachment; filename="${documento.nombre_archivo}"`);
         res.setHeader('Content-Type', contentType);
         
-        const fileStream = fs.createReadStream(filePath);
+        const fileStream = fs.createReadStream(foundPath);
         fileStream.pipe(res);
         
         fileStream.on('error', (err: any) => {
