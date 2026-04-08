@@ -293,12 +293,13 @@ router.get('/comprobante-pago/:id/download', authenticateToken, async (req, res)
 
     // Buscar archivo en múltiples rutas posibles
     const uploadDir = process.env.STORAGE_PATH || './storage/uploads';
-    const filename = comprobante.ruta_archivo;
+    // Extraer solo el nombre del archivo (por si viene ruta completa en BD)
+    const filename = path.basename(comprobante.ruta_archivo);
     
     const possiblePaths = [
-      path.join(uploadDir, 'comprobantes', filename),
       path.join('/app/storage/uploads', 'comprobantes', filename),
       path.join('/data/trip-conecta/uploads', 'comprobantes', filename),
+      path.join(uploadDir, 'comprobantes', filename),
       path.join(process.cwd(), 'storage', 'uploads', 'comprobantes', filename),
     ];
     

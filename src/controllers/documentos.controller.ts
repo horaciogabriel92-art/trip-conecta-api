@@ -158,20 +158,19 @@ export const downloadDocumento = async (req: Request, res: Response) => {
         const fs = require('fs');
         const path = require('path');
         
-        // Construir rutas posibles (solo nombre de archivo guardado en BD)
-        const filename = documento.ruta_archivo;
+        // Construir rutas posibles - extraer solo el nombre del archivo
+        // (por si en BD está guardada una ruta completa en lugar de solo el nombre)
+        const filename = path.basename(documento.ruta_archivo);
         const uploadDir = process.env.STORAGE_PATH || './storage/uploads';
         
         const possiblePaths = [
-            // Primero buscar en la ruta directa (donde multer guarda los archivos)
-            path.join(uploadDir, filename),
+            // Ruta correcta según volumen Docker (donde multer guarda los archivos)
             path.join('/app/storage/uploads', filename),
             path.join('/data/trip-conecta/uploads', filename),
+            // Compatibilidad con archivos que puedan tener ruta completa guardada
+            filename, // Si es ruta absoluta
+            path.join(process.cwd(), filename),
             path.join(process.cwd(), 'storage', 'uploads', filename),
-            // También probar en subcarpetas (por compatibilidad con archivos antiguos)
-            path.join(uploadDir, 'vouchers', filename),
-            path.join('/app/storage/uploads', 'vouchers', filename),
-            path.join('/data/trip-conecta/uploads', 'vouchers', filename),
         ];
         
         let foundPath = null;
