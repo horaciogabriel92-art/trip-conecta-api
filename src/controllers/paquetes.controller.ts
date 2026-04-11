@@ -1,6 +1,12 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 
+// Helper para truncar strings y evitar error 22001 (value too long)
+function truncar(str: string | undefined, maxLength: number): string | undefined {
+  if (!str) return str;
+  return str.length > maxLength ? str.substring(0, maxLength) : str;
+}
+
 // Interfaz para Hotel en paquetes
 interface Hotel {
   id: string;
@@ -53,11 +59,11 @@ interface PaqueteFrontend {
 function mapearPaqueteBD(data: PaqueteFrontend): any {
   const paqueteBD: any = {};
 
-  // Campos directos
+  // Campos directos (con truncamiento para evitar error 22001)
   if (data.id) paqueteBD.id = data.id;
-  if (data.codigo) paqueteBD.codigo = data.codigo;
-  if (data.destino) paqueteBD.destino = data.destino;
-  if (data.descripcion) paqueteBD.descripcion = data.descripcion;
+  if (data.codigo) paqueteBD.codigo = truncar(data.codigo, 50);
+  if (data.destino) paqueteBD.destino = truncar(data.destino, 100);
+  if (data.descripcion) paqueteBD.descripcion = data.descripcion; // TEXT, no necesita truncar
   if (data.fecha_salida) paqueteBD.fecha_salida = data.fecha_salida;
   if (data.cupos_totales !== undefined) paqueteBD.cupos_totales = data.cupos_totales;
   if (data.cupos_disponibles !== undefined) paqueteBD.cupos_disponibles = data.cupos_disponibles;
@@ -65,17 +71,17 @@ function mapearPaqueteBD(data: PaqueteFrontend): any {
 
   // Mapeo de campos con nombres diferentes
   // titulo (BD) = nombre (frontend)
-  paqueteBD.titulo = data.titulo || data.nombre || 'Paquete sin título';
+  paqueteBD.titulo = truncar(data.titulo || data.nombre || 'Paquete sin título', 255);
 
   // duracion_dias (BD) = duracion (frontend)
   paqueteBD.duracion_dias = data.duracion_dias || data.duracion || 7;
 
   // estado (BD) = status (frontend)
-  paqueteBD.estado = data.estado || data.status || 'activo';
+  paqueteBD.estado = truncar(data.estado || data.status || 'activo', 20);
 
   // imagen_principal (BD) = imagen_url (frontend)
   if (data.imagen_url || data.imagen_principal) {
-    paqueteBD.imagen_principal = data.imagen_url || data.imagen_principal;
+    paqueteBD.imagen_principal = truncar(data.imagen_url || data.imagen_principal, 500);
   }
 
   // Precios por tipo de habitación (todos opcionales)
