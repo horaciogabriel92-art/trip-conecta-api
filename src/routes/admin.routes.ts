@@ -182,4 +182,90 @@ router.post('/backup-comprobantes', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * DEBUG: Diagnóstico de documentos de viaje (vouchers)
+ * GET /api/admin/debug-vouchers
+ */
+router.get('/debug-vouchers', authenticateToken, async (req, res) => {
+    try {
+        const user = (req as any).user;
+        if (user.role !== 'admin') {
+            return res.status(403).json({ error: 'Solo admins' });
+        }
+
+        const uploadDir = process.env.STORAGE_PATH || '/app/storage/uploads';
+        
+        // Rutas a verificar
+        const pathsToCheck = [
+            '/app/storage/uploads',
+            '/data/trip-conecta/uploads',
+            uploadDir,
+            path.join(uploadDir, 'vouchers'),
+            path.join('/app/storage/uploads', 'vouchers'),
+            path.join('/data/trip-conecta/uploads', 'vouchers'),
+        ];
+
+        const pathStatus = pathsToCheck.map(p => ({
+            path: p,
+            exists: fs.existsSync(p),
+            isDirectory: fs.existsSync(p) ? fs.statSync(p).isDirectory() : false,
+            files: fs.existsSync(p) && fs.statSync(p).isDirectory() 
+                ? fs.readdirSync(p).slice(0, 20) // Primeros 20 archivos
+                : []
+        }));
+
+        // Obtener documentos de la BD
+        const { data: documentosBD, error: dbError } = await supabase
+            .from('documentos_viaje')
+            .select('id, nombre_archivo, ruta_archivo, fecha_subida')
+            .order('fecha_subida', { ascending: false })
+            .limit(10);
+
+        if (dbError) {
+            return res.status(500).json({ error: 'Error BD', details: dbError.message });
+        }
+
+        // Verificar cada documento
+        const documentosCheck = (documentosBD || []).map(doc => {
+            const filename = path.basename(doc.ruta_archivo);
+            const possiblePaths = [
+                path.join('/app/storage/uploads', filename),
+                path.join('/data/trip-conecta/uploads', filename),
+                path.join(uploadDir, filename),
+                path.join(uploadDir, 'vouchers', filename),
+                path.join('/app/storage/uploads', 'vouchers', filename),
+                filename,
+            ];
+
+            const foundIn = possiblePaths.find(p => fs.existsSync(p));
+
+            return {
+                ...doc,
+                filenameExtracted: filename,
+                found: !!foundIn,
+                foundInPath: foundIn || null,
+                checkedPaths: possiblePaths
+            };
+        });
+
+        res.json({
+            env: {
+                STORAGE_PATH: process.env.STORAGE_PATH,
+                cwd: process.cwd()
+            },
+            pathsStatus: pathStatus,
+            documentosBD: documentosCheck,
+            summary: {
+                totalDocumentos: documentosBD?.length || 0,
+                archivosEncontrados: documentosCheck.filter(d => d.found).length,
+                archivosPerdidos: documentosCheck.filter(d => !d.found).length
+            }
+        });
+
+    } catch (error: any) {
+        console.error('[Debug Vouchers] Error:', error);
+        res.status(500).json({ error: 'Error interno', details: error.message });
+    }
+});
+
 export default router;
