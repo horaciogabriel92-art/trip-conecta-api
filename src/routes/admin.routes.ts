@@ -268,4 +268,86 @@ router.get('/debug-vouchers', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * Limpiar documentos de viaje huérfanos (registros en BD sin archivo físico)
+ * POST /api/admin/cleanup-documentos
+ */
+router.post('/cleanup-documentos', authenticateToken, async (req, res) => {
+    try {
+        const user = (req as any).user;
+        if (user.role !== 'admin') {
+            return res.status(403).json({ error: 'Solo admins pueden ejecutar esta acción' });
+        }
+
+        const uploadDir = process.env.STORAGE_PATH || '/app/storage/uploads';
+        
+        // Obtener todos los documentos de la BD
+        const { data: documentosBD, error } = await supabase
+            .from('documentos_viaje')
+            .select('id, nombre_archivo, ruta_archivo, venta_id');
+        
+        if (error) {
+            return res.status(500).json({ error: 'Error al obtener documentos', details: error.message });
+        }
+
+        const resultado = {
+            totalEnBD: documentosBD?.length || 0,
+            huérfanos: [] as any[],
+            existentes: [] as any[],
+            errores: [] as string[]
+        };
+
+        // Verificar cada documento
+        for (const doc of (documentosBD || [])) {
+            const filename = path.basename(doc.ruta_archivo);
+            const possiblePaths = [
+                path.join(uploadDir, filename),
+                path.join('/app/storage/uploads', filename),
+                path.join(uploadDir, 'vouchers', filename),
+            ];
+            
+            const foundIn = possiblePaths.find(p => fs.existsSync(p));
+            
+            if (foundIn) {
+                resultado.existentes.push({
+                    id: doc.id,
+                    nombre: doc.nombre_archivo,
+                    ruta: doc.ruta_archivo,
+                    pathFisico: foundIn
+                });
+            } else {
+                resultado.huérfanos.push({
+                    id: doc.id,
+                    nombre: doc.nombre_archivo,
+                    ruta: doc.ruta_archivo,
+                    venta_id: doc.venta_id
+                });
+            }
+        }
+
+        // Eliminar huérfanos de la BD
+        if (resultado.huérfanos.length > 0) {
+            const idsAEliminar = resultado.huérfanos.map(h => h.id);
+            const { error: deleteError } = await supabase
+                .from('documentos_viaje')
+                .delete()
+                .in('id', idsAEliminar);
+            
+            if (deleteError) {
+                resultado.errores.push(`Error al eliminar: ${deleteError.message}`);
+            }
+        }
+
+        res.json({
+            message: `Limpieza completada. ${resultado.huérfanos.length} documentos huérfanos eliminados.`,
+            ...resultado,
+            storagePath: uploadDir
+        });
+
+    } catch (error: any) {
+        console.error('[Admin Cleanup Documentos] Error:', error);
+        res.status(500).json({ error: 'Error interno', details: error.message });
+    }
+});
+
 export default router;
