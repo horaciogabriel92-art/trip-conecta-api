@@ -259,9 +259,9 @@ export const createCliente = async (req: Request, res: Response) => {
                 fuente_lead,
                 referido_por,
                 tags: tags || [],
-                prioridad: prioridad || 'MEDIA',
+                prioridad: prioridad || 'media',
                 fecha_proximo_viaje_ideal,
-                estado: estado || 'ACTIVO'
+                estado: estado || 'activo'
             })
             .select()
             .single();
