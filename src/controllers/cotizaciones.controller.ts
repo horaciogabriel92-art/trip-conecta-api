@@ -548,7 +548,8 @@ export const getCotizacionById = async (req: Request, res: Response) => {
             aerolinea_codigo: v.aerolinea_codigo || v.aerolinea?.substring(0, 2)?.toUpperCase() || 'AV'
         }));
 
-        // Compatibilidad con datos legacy
+        // Compatibilidad con datos legacy + desglose de precios desde paquete_data
+        const paqueteDataPrecios = cotizacion?.paquete_data || {};
         const resultado = {
             ...cotizacion,
             pasajeros,
@@ -566,7 +567,13 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                 ? `${vendedor.nombre} ${vendedor.apellido}`
                 : 'Sin vendedor',
             vendedor,
-            tipo_cotizacion: cotizacion?.tipo_cotizacion || (cotizacion?.paquete_id ? 'paquete' : 'manual')
+            tipo_cotizacion: cotizacion?.tipo_cotizacion || (cotizacion?.paquete_id ? 'paquete' : 'manual'),
+            // Desglose de precios expuesto en raíz para frontends
+            precio_vuelos: paqueteDataPrecios.precio_vuelos ?? cotizacion?.precio_vuelos ?? 0,
+            precio_hospedajes: paqueteDataPrecios.precio_hospedajes ?? cotizacion?.precio_hospedajes ?? 0,
+            precio_extras: paqueteDataPrecios.precio_extras ?? cotizacion?.precio_extras ?? 0,
+            precio_subtotal: paqueteDataPrecios.precio_subtotal ?? cotizacion?.precio_subtotal ?? 0,
+            precio_impuestos: paqueteDataPrecios.precio_impuestos ?? cotizacion?.precio_impuestos ?? 0,
         };
         
         res.json(resultado);
