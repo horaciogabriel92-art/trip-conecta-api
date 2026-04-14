@@ -164,13 +164,18 @@ export const downloadDocumento = async (req: Request, res: Response) => {
         const uploadDir = process.env.STORAGE_PATH || './storage/uploads';
         
         const possiblePaths = [
-            // Ruta correcta según volumen Docker (donde multer guarda los archivos)
+            // Ruta correcta según volumen Docker (documentos subidos vía /documentos)
             path.join('/app/storage/uploads', filename),
             path.join('/data/trip-conecta/uploads', filename),
+            // Vouchers se guardan en subcarpeta vouchers/
+            path.join('/app/storage/uploads', 'vouchers', filename),
+            path.join('/data/trip-conecta/uploads', 'vouchers', filename),
+            path.join(uploadDir, 'vouchers', filename),
             // Compatibilidad con archivos que puedan tener ruta completa guardada
             filename, // Si es ruta absoluta
             path.join(process.cwd(), filename),
             path.join(process.cwd(), 'storage', 'uploads', filename),
+            path.join(process.cwd(), 'storage', 'uploads', 'vouchers', filename),
         ];
         
         let foundPath = null;
