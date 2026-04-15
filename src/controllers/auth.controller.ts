@@ -225,7 +225,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
       .from('users')
       .update({
         reset_token: token,
-        reset_token_expira: expiresAt.toISOString()
+        reset_token_expires: expiresAt.toISOString()
       })
       .eq('id', user.id);
 
@@ -233,7 +233,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
 
     await sendEmailAsync({
       to: user.email,
-      subject: 'Recuperación de contraseña - Trip Conecta',
+      subject: `Recuperación de contraseña - ${process.env.EMAIL_FROM_NAME || 'Quotixos'}`,
       templateName: 'password-reset',
       variables: {
         nombre: `${user.nombre || ''} ${user.apellido || ''}`.trim() || 'Usuario',
@@ -255,7 +255,7 @@ export const resetPassword = async (req: Request, res: Response) => {
 
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, reset_token, reset_token_expira')
+      .select('id, reset_token, reset_token_expires')
       .eq('reset_token', token)
       .single();
 
@@ -264,7 +264,7 @@ export const resetPassword = async (req: Request, res: Response) => {
     }
 
     const now = new Date();
-    const expires = new Date(user.reset_token_expira);
+    const expires = new Date(user.reset_token_expires);
 
     if (now > expires) {
       return res.status(400).json({ error: 'Token inválido o expirado' });
@@ -277,7 +277,7 @@ export const resetPassword = async (req: Request, res: Response) => {
       .update({
         password: hashedPassword,
         reset_token: null,
-        reset_token_expira: null
+        reset_token_expires: null
       })
       .eq('id', user.id);
 

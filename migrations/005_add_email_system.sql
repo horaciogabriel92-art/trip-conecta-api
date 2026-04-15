@@ -33,4 +33,4 @@ WITH CHECK (true);
 -- 2. Campos para recuperación de contraseña en users
 ALTER TABLE public.users
 ADD COLUMN IF NOT EXISTS reset_token VARCHAR(255),
-ADD COLUMN IF NOT EXISTS reset_token_expira TIMESTAMP WITH TIME ZONE;
+ADD COLUMN IF NOT EXISTS reset_token_expires TIMESTAMP WITH TIME ZONE;
