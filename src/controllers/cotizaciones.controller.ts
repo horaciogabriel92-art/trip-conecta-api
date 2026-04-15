@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import fs from 'fs';
 import path from 'path';
+import { sendEmailAsync, getAdminEmails } from '../services/email.service';
 
 export const createCotizacion = async (req: Request, res: Response) => {
     const { 
@@ -218,6 +219,25 @@ export const createCotizacion = async (req: Request, res: Response) => {
             realizado_por: vendedor_id,
             realizado_por_nombre: (req as any).user.nombre || 'Vendedor'
         });
+
+        // Notificar a admins por email (fire-and-forget)
+        const adminEmails = await getAdminEmails();
+        for (const adminEmail of adminEmails) {
+            sendEmailAsync({
+                to: adminEmail,
+                subject: `Nueva cotización ${codigo}`,
+                templateName: 'nueva-cotizacion',
+                variables: {
+                    adminNombre: '',
+                    codigo,
+                    vendedorNombre: (req as any).user?.nombre || 'Vendedor',
+                    clienteNombre: cliente_nombre || 'Cliente',
+                    montoTotal: String(cotizacion.precio_total || 0),
+                    linkAdmin: `${process.env.PANEL_URL || 'https://panel.tripconecta.com'}/admin/cotizaciones/${cotizacion.id}`
+                },
+                metadata: { tipo: 'nueva_cotizacion', cotizacion_id: cotizacion.id }
+            });
+        }
 
         res.status(201).json(cotizacion);
     } catch (error: any) {
@@ -855,6 +875,50 @@ export const convertirAVenta = async (req: Request, res: Response) => {
                 .eq('id', cotizacion.paquete_id);
         }
 
+        // Notificar a admins y vendedor por email (fire-and-forget)
+        const adminEmailsVenta = await getAdminEmails();
+        for (const adminEmail of adminEmailsVenta) {
+            sendEmailAsync({
+                to: adminEmail,
+                subject: `Venta confirmada ${codigo_venta}`,
+                templateName: 'nueva-venta',
+                variables: {
+                    adminNombre: '',
+                    codigoVenta: codigo_venta,
+                    vendedorNombre: (req as any).user?.nombre || 'Vendedor',
+                    clienteNombre: clienteNombre || 'Cliente',
+                    precioTotal: String(cotizacion.precio_total || 0),
+                    comision: String(venta.comision_monto || 0),
+                    linkAdmin: `${process.env.PANEL_URL || 'https://panel.tripconecta.com'}/admin/cotizaciones/${id}`
+                },
+                metadata: { tipo: 'nueva_venta', venta_id: venta.id, cotizacion_id: id }
+            });
+        }
+
+        // Notificar al vendedor
+        const { data: vendedorData } = await supabase
+            .from('users')
+            .select('email, nombre')
+            .eq('id', cotizacion.vendedor_id)
+            .single();
+
+        if (vendedorData?.email) {
+            sendEmailAsync({
+                to: vendedorData.email,
+                subject: `Venta confirmada ${codigo_venta}`,
+                templateName: 'nueva-venta-vendedor',
+                variables: {
+                    vendedorNombre: vendedorData.nombre || 'Vendedor',
+                    codigoVenta: codigo_venta,
+                    clienteNombre: clienteNombre || 'Cliente',
+                    precioTotal: String(cotizacion.precio_total || 0),
+                    comision: String(venta.comision_monto || 0),
+                    linkVendedor: `${process.env.PANEL_URL || 'https://panel.tripconecta.com'}/mis-ventas`
+                },
+                metadata: { tipo: 'nueva_venta_vendedor', venta_id: venta.id, cotizacion_id: id }
+            });
+        }
+
         // Usar montoPagadoNum y montoRestante ya calculados arriba
         res.status(201).json({ 
             message: 'Cotización convertida a venta exitosamente', 
@@ -1480,6 +1544,25 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
             .from('clientes')
             .update({ fecha_ultima_interaccion: new Date().toISOString() })
             .eq('id', clienteFinalId);
+
+        // Notificar a admins por email (fire-and-forget)
+        const adminEmailsManual = await getAdminEmails();
+        for (const adminEmail of adminEmailsManual) {
+            sendEmailAsync({
+                to: adminEmail,
+                subject: `Nueva cotización ${codigo}`,
+                templateName: 'nueva-cotizacion',
+                variables: {
+                    adminNombre: '',
+                    codigo,
+                    vendedorNombre: user.nombre || 'Vendedor',
+                    clienteNombre: clienteData ? `${clienteData.nombre || ''} ${clienteData.apellido || ''}`.trim() : 'Cliente',
+                    montoTotal: String(cotizacion.precio_total || 0),
+                    linkAdmin: `${process.env.PANEL_URL || 'https://panel.tripconecta.com'}/admin/cotizaciones/${cotizacion.id}`
+                },
+                metadata: { tipo: 'nueva_cotizacion', cotizacion_id: cotizacion.id }
+            });
+        }
 
         res.status(201).json({
             message: 'Cotización creada exitosamente',

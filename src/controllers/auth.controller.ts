@@ -1,8 +1,10 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { supabase } from '../config/supabase';
 import { z } from 'zod';
+import { sendEmailAsync } from '../services/email.service';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -184,6 +186,104 @@ export const getAllUsers = async (req: Request, res: Response) => {
     res.json(users);
   } catch (error) {
     console.error('Get all users error:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+};
+
+// ======================
+// RECUPERACIÓN DE CONTRASEÑA
+// ======================
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email()
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(1),
+  password: z.string().min(6)
+});
+
+export const forgotPassword = async (req: Request, res: Response) => {
+  try {
+    const { email } = forgotPasswordSchema.parse(req.body);
+
+    const { data: user } = await supabase
+      .from('users')
+      .select('id, email, nombre, apellido')
+      .eq('email', email)
+      .single();
+
+    // Siempre responder éxito para evitar enumeración de emails
+    if (!user) {
+      return res.json({ message: 'Si el email existe, recibirás instrucciones para restablecer tu contraseña.' });
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hora
+
+    await supabase
+      .from('users')
+      .update({
+        reset_token: token,
+        reset_token_expira: expiresAt.toISOString()
+      })
+      .eq('id', user.id);
+
+    const resetLink = `${process.env.PANEL_URL || 'https://panel.tripconecta.com'}/login/reset-password?token=${token}`;
+
+    await sendEmailAsync({
+      to: user.email,
+      subject: 'Recuperación de contraseña - Trip Conecta',
+      templateName: 'password-reset',
+      variables: {
+        nombre: `${user.nombre || ''} ${user.apellido || ''}`.trim() || 'Usuario',
+        resetLink
+      },
+      metadata: { tipo: 'password_reset', user_id: user.id }
+    });
+
+    res.json({ message: 'Si el email existe, recibirás instrucciones para restablecer tu contraseña.' });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+};
+
+export const resetPassword = async (req: Request, res: Response) => {
+  try {
+    const { token, password } = resetPasswordSchema.parse(req.body);
+
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('id, reset_token, reset_token_expira')
+      .eq('reset_token', token)
+      .single();
+
+    if (error || !user) {
+      return res.status(400).json({ error: 'Token inválido o expirado' });
+    }
+
+    const now = new Date();
+    const expires = new Date(user.reset_token_expira);
+
+    if (now > expires) {
+      return res.status(400).json({ error: 'Token inválido o expirado' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await supabase
+      .from('users')
+      .update({
+        password: hashedPassword,
+        reset_token: null,
+        reset_token_expira: null
+      })
+      .eq('id', user.id);
+
+    res.json({ message: 'Contraseña restablecida exitosamente' });
+  } catch (error) {
+    console.error('Reset password error:', error);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 };
