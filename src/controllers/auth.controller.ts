@@ -66,7 +66,8 @@ export const login = async (req: Request, res: Response) => {
         nombre: user.nombre,
         apellido: user.apellido,
         rol: user.rol,
-        comision_porcentaje: user.comision_porcentaje
+        comision_porcentaje: user.comision_porcentaje,
+        preferencias: user.preferencias || {}
       }
     });
   } catch (error) {
@@ -81,7 +82,7 @@ export const getProfile = async (req: Request, res: Response) => {
     
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, email, nombre, apellido, telefono, rol, comision_porcentaje, fecha_registro')
+      .select('id, email, nombre, apellido, telefono, rol, comision_porcentaje, preferencias, fecha_registro')
       .eq('id', userId)
       .single();
 
@@ -99,11 +100,21 @@ export const getProfile = async (req: Request, res: Response) => {
 export const updateProfile = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.userId;
-    const { nombre, apellido, telefono } = req.body;
+    const { nombre, apellido, telefono, preferencias } = req.body;
+
+    const updateData: any = { nombre, apellido, telefono };
+    if (preferencias !== undefined) {
+      const { data: current } = await supabase
+        .from('users')
+        .select('preferencias')
+        .eq('id', userId)
+        .single();
+      updateData.preferencias = { ...(current?.preferencias || {}), ...preferencias };
+    }
 
     const { data, error } = await supabase
       .from('users')
-      .update({ nombre, apellido, telefono })
+      .update(updateData)
       .eq('id', userId)
       .select()
       .single();
