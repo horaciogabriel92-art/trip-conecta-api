@@ -257,6 +257,44 @@ export const getAllUsers = async (req: Request, res: Response) => {
   }
 };
 
+export const changePassword = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: 'Contraseña actual requerida y nueva contraseña de al menos 6 caracteres' });
+    }
+
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('password')
+      .eq('id', userId)
+      .single();
+
+    if (error || !user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const validPassword = await bcrypt.compare(currentPassword, user.password);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Contraseña actual incorrecta' });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await supabase
+      .from('users')
+      .update({ password: hashedPassword })
+      .eq('id', userId);
+
+    res.json({ message: 'Contraseña actualizada exitosamente' });
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+};
+
 // ======================
 // RECUPERACIÓN DE CONTRASEÑA
 // ======================

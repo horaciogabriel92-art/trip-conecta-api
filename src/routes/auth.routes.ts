@@ -8,6 +8,7 @@ const router = Router();
 router.post('/login', loginLimiter, authController.login);
 router.post('/forgot-password', apiLimiter, authController.forgotPassword);
 router.post('/reset-password', apiLimiter, authController.resetPassword);
+router.post('/change-password', authenticateToken, authController.changePassword);
 router.get('/profile', authenticateToken, authController.getProfile);
 router.put('/profile', authenticateToken, authController.updateProfile);
 
