@@ -82,7 +82,9 @@ export const getVentaById = async (req: Request, res: Response) => {
             }
         }
         
-        const montoPagado = (pagos || []).reduce((sum: number, p: any) => sum + Number(p.monto), 0);
+        let montoPagado = (pagos || []).reduce((sum: number, p: any) => sum + Number(p.monto), 0);
+        // Preservar pagos heredados que no están en pagos_venta
+        montoPagado = Math.max(montoPagado, venta.monto_pagado_heredado || 0);
         const montoRestante = Math.max(0, venta.precio_total - montoPagado);
         const tipoPago = montoRestante <= 0 ? 'total' : (montoPagado > 0 ? 'parcial' : 'pendiente');
 
@@ -132,7 +134,7 @@ export const registrarPago = async (req: Request, res: Response) => {
         // 3. Obtener cotización para verificar restante
         const { data: cotizacion, error: cotError } = await supabase
             .from('cotizaciones')
-            .select('id, precio_total, monto_pagado, monto_restante')
+            .select('id, cliente_id, precio_total, monto_pagado, monto_restante')
             .eq('id', venta.cotizacion_id)
             .single();
 
@@ -179,7 +181,9 @@ export const registrarPago = async (req: Request, res: Response) => {
             .select('monto')
             .eq('cotizacion_id', venta.cotizacion_id);
 
-        const nuevoMontoPagado = (pagosSum || []).reduce((sum: number, p: any) => sum + Number(p.monto), 0);
+        let nuevoMontoPagado = (pagosSum || []).reduce((sum: number, p: any) => sum + Number(p.monto), 0);
+        // Preservar pagos heredados que no están en pagos_venta
+        nuevoMontoPagado = Math.max(nuevoMontoPagado, cotizacion.monto_pagado || 0);
         const nuevoMontoRestante = Math.max(0, cotizacion.precio_total - nuevoMontoPagado);
         const nuevoTipoPago = nuevoMontoRestante <= 0 ? 'total' : 'parcial';
 
@@ -196,6 +200,22 @@ export const registrarPago = async (req: Request, res: Response) => {
         if (updateError) {
             console.error('Error actualizando cotización:', updateError);
             return res.status(500).json({ error: 'Pago registrado pero error al actualizar totales' });
+        }
+
+        // 7. Registrar en historial_cliente
+        if (cotizacion?.cliente_id) {
+            try {
+                await supabase.from('historial_cliente').insert({
+                    cliente_id: cotizacion.cliente_id,
+                    tipo: 'venta_confirmada',
+                    venta_id: venta.id,
+                    descripcion: `Pago de $${montoNum} registrado. Restante: $${nuevoMontoRestante}`,
+                    realizado_por: user.userId,
+                    realizado_por_nombre: user.nombre || user.email || 'Usuario'
+                });
+            } catch (e) {
+                console.log('Error registrando historial_cliente:', e);
+            }
         }
 
         res.json({
@@ -234,6 +254,27 @@ export const updateEstadoVenta = async (req: Request, res: Response) => {
 
         if (error || !venta) {
             return res.status(404).json({ error: 'Venta no encontrada' });
+        }
+
+        // Registrar en historial_cliente
+        try {
+            const { data: cot } = await supabase
+                .from('cotizaciones')
+                .select('cliente_id')
+                .eq('id', venta.cotizacion_id)
+                .single();
+            if (cot?.cliente_id) {
+                await supabase.from('historial_cliente').insert({
+                    cliente_id: cot.cliente_id,
+                    tipo: 'estado_cambiado',
+                    venta_id: venta.id,
+                    descripcion: `Estado de venta cambiado a ${estado}`,
+                    realizado_por: user.userId,
+                    realizado_por_nombre: user.nombre || user.email || 'Usuario'
+                });
+            }
+        } catch (e) {
+            console.log('Error registrando historial_cliente:', e);
         }
 
         res.json({ message: 'Estado actualizado', venta });
