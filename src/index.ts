@@ -49,6 +49,7 @@ import uploadRoutes from './routes/upload.routes';
 import clientesRoutes from './routes/clientes.routes';
 import notificacionesRoutes from './routes/notificaciones.routes';
 import adminRoutes from './routes/admin.routes';
+import jobsRoutes from './routes/jobs.routes';
 app.use('/api/auth', express.json(), authRoutes);
 app.use('/api/admin', express.json(), adminRoutes);
 app.use('/api/paquetes', express.json(), paquetesRoutes);
@@ -59,6 +60,7 @@ app.use('/api/comisiones', express.json(), comisionesRoutes);
 app.use('/api/clientes', express.json(), clientesRoutes);
 app.use('/api/notificaciones', express.json(), notificacionesRoutes);
 app.use('/api/upload', uploadRoutes); // Sin express.json() - usa multipart
+app.use('/api/jobs', express.json(), jobsRoutes);
 
 // Health check con verificación de Supabase
 app.get('/api/health', async (req, res) => {

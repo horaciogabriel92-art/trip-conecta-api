@@ -82,6 +82,22 @@ export async function sendEmailAsync(payload: EmailPayload): Promise<void> {
   sendEmail(payload).catch(() => {});
 }
 
+export async function sendPagoPendienteVendedor(to: string, nombre: string, codigoCotizacion: string, montoRestante: string, fechaLimite: string, linkPanel: string) {
+  return sendEmailAsync({
+    to,
+    subject: `Recordatorio de pago pendiente - Cotización ${codigoCotizacion}`,
+    templateName: 'pago-pendiente-vendedor',
+    variables: {
+      nombre,
+      codigoCotizacion,
+      montoRestante,
+      fechaLimite,
+      linkPanel
+    },
+    metadata: { tipo: 'pago_pendiente_vendedor' }
+  });
+}
+
 export async function getAdminEmails(): Promise<string[]> {
   const { data: admins, error } = await supabase
     .from('users')

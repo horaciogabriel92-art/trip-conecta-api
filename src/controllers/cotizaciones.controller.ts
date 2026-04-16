@@ -471,9 +471,10 @@ export const getCotizacionById = async (req: Request, res: Response) => {
             } catch (e) { console.log('Error cargando paquete:', e); }
         }
         
-        // ========== CARGAR DATOS DE VENTA Y COMPROBANTES ==========
+        // ========== CARGAR DATOS DE VENTA, COMPROBANTES Y PAGOS ==========
         let venta = null;
         let comprobantesPago: any[] = [];
+        let pagos: any[] = [];
         
         // SIEMPRE verificar si existe venta asociada (incluso si estado no es 'vendida')
         // Esto maneja casos de inconsistencia donde la venta existe pero la cotización no se actualizó
@@ -490,6 +491,16 @@ export const getCotizacionById = async (req: Request, res: Response) => {
             }
                 
             if (venta) {
+                // Cargar pagos del historial
+                try {
+                    const { data: pagosData } = await supabase
+                        .from('pagos_venta')
+                        .select('*')
+                        .eq('cotizacion_id', id)
+                        .order('fecha_pago', { ascending: false });
+                    pagos = pagosData || [];
+                } catch (e) { console.log('Error cargando pagos:', e); }
+
                 // Verificar archivos físicos existentes
                 const uploadDir = process.env.STORAGE_PATH || '/app/storage/uploads';
                 
@@ -579,6 +590,7 @@ export const getCotizacionById = async (req: Request, res: Response) => {
             // Datos de venta (solo para admin/vendedor cuando está vendida)
             venta,
             comprobantes_pago: comprobantesPago,
+            pagos,
             // Campos legacy para compatibilidad
             cliente_nombre: cotizacion?.cliente 
                 ? `${cotizacion.cliente.nombre} ${cotizacion.cliente.apellido}`
@@ -864,6 +876,20 @@ export const convertirAVenta = async (req: Request, res: Response) => {
         }
         
         console.log('✅ Cotización actualizada a vendida exitosamente');
+
+        // Registrar pago inicial en historial
+        if (pago_realizado && montoPagadoNum > 0) {
+            await supabase.from('pagos_venta').insert({
+                venta_id: venta.id,
+                cotizacion_id: id,
+                monto: montoPagadoNum,
+                medio_pago: medio_pago || null,
+                fecha_pago: new Date().toISOString().split('T')[0],
+                observaciones: observaciones_pago || null,
+                tipo: 'inicial',
+                registrado_por: user.userId
+            });
+        }
 
         // RESTAR CUPOS DISPONIBLES (solo si viene de un paquete)
         let nuevosCupos = null;

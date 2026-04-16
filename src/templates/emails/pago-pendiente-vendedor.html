@@ -1,0 +1,18 @@
+<h2 style="color: #f59e0b; margin-top: 0;">⏰ Recordatorio de pago pendiente</h2>
+
+<p>Hola <strong>{{nombre}}</strong>,</p>
+
+<p>Te recordamos que la cotización <strong>{{codigoCotizacion}}</strong> tiene un <strong>pago pendiente</strong>:</p>
+
+<div class="highlight">
+  <p style="margin: 0; font-size: 18px;"><strong>Monto restante:</strong> ${{montoRestante}}</p>
+  <p style="margin: 8px 0 0 0;"><strong>Fecha límite:</strong> {{fechaLimite}}</p>
+</div>
+
+<p>Por favor, ingresa al panel para registrar el pago restante y mantener al día el estado de la venta:</p>
+
+<p style="text-align: center;">
+  <a href="{{linkPanel}}" class="button">Ir a la cotización</a>
+</p>
+
+<p style="font-size: 12px; color: #888888;">Si ya realizaste el pago, puedes ignorar este mensaje después de registrarlo en el sistema.</p>
