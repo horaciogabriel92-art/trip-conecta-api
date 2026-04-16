@@ -82,8 +82,15 @@ export const getVentaById = async (req: Request, res: Response) => {
             }
         }
         
+        const montoPagado = (pagos || []).reduce((sum: number, p: any) => sum + Number(p.monto), 0);
+        const montoRestante = Math.max(0, venta.precio_total - montoPagado);
+        const tipoPago = montoRestante <= 0 ? 'total' : (montoPagado > 0 ? 'parcial' : 'pendiente');
+
         const ventaFormateada = {
             ...venta,
+            monto_pagado: montoPagado,
+            monto_restante: montoRestante,
+            tipo_pago: tipoPago,
             comprobantes_pago: comprobantesConUrl,
             pagos
         };
