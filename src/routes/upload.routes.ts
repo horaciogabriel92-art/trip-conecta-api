@@ -4,6 +4,7 @@ import { authenticateToken } from '../middleware/auth';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { findComprobanteFile } from '../utils/fileSearch';
 
 const router = Router();
 console.log('[UPLOAD ROUTES] Loading upload routes...');
