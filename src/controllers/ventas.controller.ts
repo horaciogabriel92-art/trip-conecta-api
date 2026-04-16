@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
+import { findComprobanteFile } from '../utils/fileSearch';
 
 export const getVentas = async (req: Request, res: Response) => {
     const user = (req as any).user;
@@ -64,11 +65,14 @@ export const getVentaById = async (req: Request, res: Response) => {
             if (compError) {
                 console.error('Error fetching comprobantes:', compError);
             } else {
-                comprobantesConUrl = (comprobantes || []).map((c: any) => ({
-                    ...c,
-                    url: `/uploads/comprobantes/${c.ruta_archivo}`
-                }));
-                console.log('Comprobantes encontrados:', comprobantesConUrl.length);
+                comprobantesConUrl = (comprobantes || [])
+                    .filter((c: any) => !!findComprobanteFile(c.ruta_archivo))
+                    .map((c: any) => ({
+                        ...c,
+                        url: `/uploads/comprobantes/${c.ruta_archivo}`,
+                        es_descargable: true
+                    }));
+                console.log('Comprobantes encontrados:', comprobantes?.length, 'Con archivo físico:', comprobantesConUrl.length);
             }
 
             if (pagosError) {

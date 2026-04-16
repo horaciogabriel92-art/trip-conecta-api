@@ -3,6 +3,7 @@ import { supabase } from '../config/supabase';
 import fs from 'fs';
 import path from 'path';
 import { sendEmailAsync, getAdminEmails } from '../services/email.service';
+import { findComprobanteFile } from '../utils/fileSearch';
 
 export const createCotizacion = async (req: Request, res: Response) => {
     const { 
@@ -501,9 +502,6 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                     pagos = pagosData || [];
                 } catch (e) { console.log('Error cargando pagos:', e); }
 
-                // Verificar archivos físicos existentes
-                const uploadDir = process.env.STORAGE_PATH || '/app/storage/uploads';
-                
                 // Parsear comprobantes_pago_urls si existe
                 if (venta.comprobantes_pago_urls) {
                     try {
@@ -511,10 +509,9 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                         let idx = 0;
                         for (const url of urls) {
                             const filename = url.split('/').pop() || `comprobante_${idx + 1}`;
-                            const filePath = path.join(uploadDir, 'comprobantes', filename);
+                            const filePath = findComprobanteFile(filename);
                             
-                            // Solo agregar si el archivo existe físicamente
-                            if (fs.existsSync(filePath)) {
+                            if (filePath) {
                                 comprobantesPago.push({
                                     id: `comp_${idx}`,
                                     nombre_archivo: filename,
@@ -523,7 +520,7 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                                     es_descargable: true
                                 });
                             } else {
-                                console.log(`[getCotizacionById] Archivo no existe: ${filePath}`);
+                                console.log(`[getCotizacionById] Archivo no existe en ninguna ruta conocida: ${filename}`);
                             }
                             idx++;
                         }
@@ -544,10 +541,9 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                         for (const comp of comps) {
                             const compUrl = `/uploads/comprobantes/${comp.ruta_archivo}`;
                             if (!existingUrls.has(compUrl)) {
-                                const filePath = path.join(uploadDir, 'comprobantes', comp.ruta_archivo);
+                                const filePath = findComprobanteFile(comp.ruta_archivo);
                                 
-                                // Solo agregar si el archivo existe físicamente
-                                if (fs.existsSync(filePath)) {
+                                if (filePath) {
                                     comprobantesPago.push({
                                         id: comp.id,
                                         nombre_archivo: comp.nombre_archivo,

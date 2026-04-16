@@ -292,27 +292,11 @@ router.get('/comprobante-pago/:id/download', authenticateToken, async (req, res)
     }
 
     // Buscar archivo en múltiples rutas posibles
-    const uploadDir = process.env.STORAGE_PATH || './storage/uploads';
-    // Extraer solo el nombre del archivo (por si viene ruta completa en BD)
     const filename = path.basename(comprobante.ruta_archivo);
-    
-    const possiblePaths = [
-      path.join('/app/storage/uploads', 'comprobantes', filename),
-      path.join('/data/trip-conecta/uploads', 'comprobantes', filename),
-      path.join(uploadDir, 'comprobantes', filename),
-      path.join(process.cwd(), 'storage', 'uploads', 'comprobantes', filename),
-    ];
-    
-    let filePath = null;
-    for (const tryPath of possiblePaths) {
-      if (fs.existsSync(tryPath)) {
-        filePath = tryPath;
-        break;
-      }
-    }
+    const filePath = findComprobanteFile(filename);
     
     if (!filePath) {
-      console.error('[Download Comprobante] Archivo no encontrado. Intentado:', possiblePaths);
+      console.error('[Download Comprobante] Archivo no encontrado:', filename, 'cwd:', process.cwd(), 'STORAGE_PATH:', process.env.STORAGE_PATH);
       return res.status(404).json({ error: 'Archivo no encontrado' });
     }
 
@@ -358,43 +342,10 @@ router.get('/comprobante-pago/download-by-filename/:filename', authenticateToken
       return res.status(400).json({ error: 'Nombre de archivo inválido' });
     }
 
-    // Intentar múltiples rutas posibles
-    const possiblePaths = [
-      path.join(process.env.STORAGE_PATH || '/app/storage/uploads', 'comprobantes', basename),
-      path.join('./storage/uploads', 'comprobantes', basename),
-      path.join('/data/trip-conecta/uploads', 'comprobantes', basename),
-      path.join('/app/storage/uploads', 'comprobantes', basename),
-    ];
-    
-    console.log('[Download] STORAGE_PATH env:', process.env.STORAGE_PATH);
-    console.log('[Download] Checking paths:', possiblePaths);
-
-    // Encontrar el primer archivo que existe
-    let filePath: string | null = null;
-    for (const tryPath of possiblePaths) {
-      console.log('[Download] Checking:', tryPath, 'exists:', fs.existsSync(tryPath));
-      if (fs.existsSync(tryPath)) {
-        filePath = tryPath;
-        break;
-      }
-    }
+    const filePath = findComprobanteFile(basename);
     
     if (!filePath) {
-      console.error('[Download] Archivo no encontrado en ninguna ruta:', basename);
-      // Listar archivos en el directorio para debug
-      for (const tryPath of possiblePaths) {
-        const dir = path.dirname(tryPath);
-        try {
-          if (fs.existsSync(dir)) {
-            const files = fs.readdirSync(dir);
-            console.log(`[Download] Archivos en ${dir}:`, files.slice(0, 20));
-          } else {
-            console.log(`[Download] Directorio no existe: ${dir}`);
-          }
-        } catch (e: any) {
-          console.error(`[Download] Error leyendo ${dir}:`, e.message);
-        }
-      }
+      console.error('[Download] Archivo no encontrado en ninguna ruta:', basename, 'cwd:', process.cwd(), 'STORAGE_PATH:', process.env.STORAGE_PATH);
       return res.status(404).json({ error: 'Archivo no encontrado' });
     }
     
