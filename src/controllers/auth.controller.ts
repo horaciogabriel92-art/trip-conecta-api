@@ -139,7 +139,7 @@ export const createUser = async (req: Request, res: Response) => {
         nombre,
         apellido,
         rol: rol || 'vendedor',
-        comision_porcentaje: comision_porcentaje || 12
+        comision_porcentaje: comision_porcentaje || null
       })
       .select()
       .single();

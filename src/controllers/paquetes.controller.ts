@@ -53,6 +53,7 @@ interface PaqueteFrontend {
   fecha_actualizacion?: string;
   vuelos?: any[];
   hoteles?: Hotel[];
+  comision_monto_usd?: number | null;
 }
 
 // Función para mapear datos del frontend al schema de la BD
@@ -135,6 +136,9 @@ function mapearPaqueteBD(data: PaqueteFrontend): any {
   if (data.hoteles) {
     paqueteBD.hoteles = Array.isArray(data.hoteles) ? data.hoteles : [];
   }
+  if (data.comision_monto_usd !== undefined && data.comision_monto_usd !== null) {
+    paqueteBD.comision_monto_usd = data.comision_monto_usd;
+  }
 
   return paqueteBD;
 }
@@ -168,6 +172,7 @@ function mapearPaqueteFrontend(data: any): PaqueteFrontend {
     recursos_vendedores: data.recursos_vendedores || [],
     vuelos: data.vuelos || [],
     hoteles: data.hoteles || [],
+    comision_monto_usd: data.comision_monto_usd,
     fecha_creacion: data.fecha_creacion,
     fecha_actualizacion: data.fecha_actualizacion
   };

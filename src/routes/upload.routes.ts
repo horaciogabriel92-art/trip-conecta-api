@@ -570,7 +570,7 @@ router.post('/voucher/:ventaId', authenticateToken, uploadVoucher.single('vouche
     const { ventaId } = req.params;
     const userId = (req as any).user.userId;
     const userRole = (req as any).user.role;
-    const { tipo_documento, descripcion } = req.body;
+    const { tipo_documento, descripcion, comision_monto } = req.body;
     
     // Solo admin puede subir vouchers
     if (userRole !== 'admin') {
@@ -614,6 +614,43 @@ router.post('/voucher/:ventaId', authenticateToken, uploadVoucher.single('vouche
       fs.unlinkSync(req.file.path);
       console.error('Error guardando voucher:', insertError);
       return res.status(500).json({ error: 'Error al guardar voucher', details: insertError.message });
+    }
+    
+    // ACTUALIZAR COMISIÓN SI SE PROPORCIONÓ
+    const comisionNum = comision_monto !== undefined && comision_monto !== '' ? Number(comision_monto) : NaN;
+    if (!isNaN(comisionNum) && comisionNum >= 0) {
+      await supabase
+        .from('ventas')
+        .update({ comision_monto: comisionNum })
+        .eq('id', ventaId);
+      
+      if (venta.cotizacion_id) {
+        await supabase
+          .from('cotizaciones')
+          .update({ comision_vendedor: comisionNum })
+          .eq('id', venta.cotizacion_id);
+        
+        // Obtener cliente_id para historial
+        const { data: cotData } = await supabase
+          .from('cotizaciones')
+          .select('cliente_id')
+          .eq('id', venta.cotizacion_id)
+          .single();
+        
+        // Registrar en historial del cliente
+        if (cotData?.cliente_id) {
+          await supabase
+            .from('historial_cliente')
+            .insert({
+              cliente_id: cotData.cliente_id,
+              tipo: 'comision_asignada',
+              descripcion: `Comisión de $${comisionNum} asignada al subir voucher`,
+              venta_id: ventaId,
+              cotizacion_id: venta.cotizacion_id,
+              realizado_por: userId
+            });
+        }
+      }
     }
     
     // ACTUALIZAR ESTADO DE VENTA A 'emitida'

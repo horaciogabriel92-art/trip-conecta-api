@@ -183,7 +183,7 @@ export const createCotizacion = async (req: Request, res: Response) => {
                 fecha_salida: fecha_salida || null,
                 precio_total,
                 precio_moneda: 'USD',
-                comision_vendedor: precio_total * 0.12,
+                comision_vendedor: paquete.comision_monto_usd || 0,
                 paquete_data: paqueteData,
                 itinerario: paqueteData.itinerario,
                 destino_principal: paquete.destino,
@@ -782,8 +782,8 @@ export const convertirAVenta = async (req: Request, res: Response) => {
                 fecha_salida: cotizacion.fecha_salida,
                 num_pasajeros: cotizacion.num_pasajeros,
                 precio_total: cotizacion.precio_total,
-                comision_porcentaje: 12,
-                comision_monto: cotizacion.comision_vendedor || (cotizacion.precio_total * 0.12),
+                comision_porcentaje: null,
+                comision_monto: cotizacion.comision_vendedor || 0,
                 estado: 'pendiente',  // Inicialmente pendiente hasta que admin suba vouchers
                 notas: notasVenta || null,
                 metodo_pago: medio_pago || null,
@@ -1443,7 +1443,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                 origen_datos: origen_datos || 'manual',
                 precio_total: precioCalculado,
                 precio_moneda: precios?.moneda || 'USD',
-                comision_vendedor: precioCalculado * 0.12,
+                comision_vendedor: 0,
                 paquete_data: paqueteDataJson,
                 itinerario: paqueteItinerario,
                 notas: paquete_id 
