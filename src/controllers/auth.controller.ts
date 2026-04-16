@@ -167,6 +167,73 @@ export const createUser = async (req: Request, res: Response) => {
   }
 };
 
+// Admin: Actualizar usuario existente
+export const updateUser = async (req: Request, res: Response) => {
+  try {
+    if ((req as any).user?.role !== 'admin') {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+
+    const { id } = req.params;
+    const { nombre, apellido, telefono, email, comision_porcentaje, activo, password } = req.body;
+
+    // Si se cambia el email, verificar que no esté en uso por otro usuario
+    if (email) {
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', email)
+        .neq('id', id)
+        .single();
+
+      if (existingUser) {
+        return res.status(409).json({ error: 'El email ya está registrado por otro usuario' });
+      }
+    }
+
+    const updateData: any = {
+      nombre,
+      apellido,
+      telefono,
+      email,
+      comision_porcentaje,
+      activo
+    };
+
+    if (password && password.length >= 6) {
+      updateData.password = await bcrypt.hash(password, 10);
+    }
+
+    const { data, error } = await supabase
+      .from('users')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    res.json({
+      message: 'Usuario actualizado exitosamente',
+      user: {
+        id: data.id,
+        email: data.email,
+        nombre: data.nombre,
+        apellido: data.apellido,
+        rol: data.rol,
+        comision_porcentaje: data.comision_porcentaje,
+        activo: data.activo,
+        telefono: data.telefono
+      }
+    });
+  } catch (error) {
+    console.error('Update user error:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+};
+
 // Admin: Listar todos los usuarios
 export const getAllUsers = async (req: Request, res: Response) => {
   try {

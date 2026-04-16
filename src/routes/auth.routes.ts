@@ -14,5 +14,6 @@ router.put('/profile', authenticateToken, authController.updateProfile);
 // Admin routes
 router.get('/users', authenticateToken, authorizeRole(['admin']), authController.getAllUsers);
 router.post('/users', authenticateToken, authorizeRole(['admin']), authController.createUser);
+router.put('/users/:id', authenticateToken, authorizeRole(['admin']), authController.updateUser);
 
 export default router;
