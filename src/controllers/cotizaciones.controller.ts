@@ -782,7 +782,7 @@ export const convertirAVenta = async (req: Request, res: Response) => {
                 fecha_salida: cotizacion.fecha_salida,
                 num_pasajeros: cotizacion.num_pasajeros,
                 precio_total: cotizacion.precio_total,
-                comision_porcentaje: null,
+                comision_porcentaje: 0,
                 comision_monto: cotizacion.comision_vendedor || 0,
                 estado: 'pendiente',  // Inicialmente pendiente hasta que admin suba vouchers
                 notas: notasVenta || null,
