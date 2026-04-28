@@ -98,6 +98,40 @@ export async function sendPagoPendienteVendedor(to: string, nombre: string, codi
   });
 }
 
+export async function sendRecordatorioCotizacionVencer(to: string, nombre: string, codigoCotizacion: string, diasRestantes: string, fechaExpiracion: string, clienteNombre: string, linkPanel: string) {
+  return sendEmailAsync({
+    to,
+    subject: `Tu cotización ${codigoCotizacion} vence en ${diasRestantes} días`,
+    templateName: 'recordatorio-cotizacion-vencer',
+    variables: {
+      nombre,
+      codigoCotizacion,
+      diasRestantes,
+      fechaExpiracion,
+      clienteNombre,
+      linkPanel
+    },
+    metadata: { tipo: 'recordatorio_cotizacion_vencer' }
+  });
+}
+
+export async function sendRecordatorioSeguimiento(to: string, nombre: string, codigoCotizacion: string, diasSinRespuesta: string, fechaEnvio: string, clienteNombre: string, linkPanel: string) {
+  return sendEmailAsync({
+    to,
+    subject: `Seguimiento pendiente - Cotización ${codigoCotizacion}`,
+    templateName: 'recordatorio-seguimiento-cliente',
+    variables: {
+      nombre,
+      codigoCotizacion,
+      diasSinRespuesta,
+      fechaEnvio,
+      clienteNombre,
+      linkPanel
+    },
+    metadata: { tipo: 'recordatorio_seguimiento_cliente' }
+  });
+}
+
 export async function getAdminEmails(): Promise<string[]> {
   const { data: admins, error } = await supabase
     .from('users')
