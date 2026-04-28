@@ -51,6 +51,7 @@ import notificacionesRoutes from './routes/notificaciones.routes';
 import adminRoutes from './routes/admin.routes';
 import jobsRoutes from './routes/jobs.routes';
 import reportesRoutes from './routes/reportes.routes';
+import recordatoriosRoutes from './routes/recordatorios.routes';
 app.use('/api/auth', express.json(), authRoutes);
 app.use('/api/admin', express.json(), adminRoutes);
 app.use('/api/paquetes', express.json(), paquetesRoutes);
@@ -60,6 +61,7 @@ app.use('/api/documentos', express.json(), documentosRoutes);
 app.use('/api/comisiones', express.json(), comisionesRoutes);
 app.use('/api/clientes', express.json(), clientesRoutes);
 app.use('/api/notificaciones', express.json(), notificacionesRoutes);
+app.use('/api/recordatorios', express.json(), recordatoriosRoutes);
 app.use('/api/upload', uploadRoutes); // Sin express.json() - usa multipart
 app.use('/api/jobs', express.json(), jobsRoutes);
 app.use('/api/reportes', express.json(), reportesRoutes);
