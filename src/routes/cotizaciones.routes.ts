@@ -17,6 +17,7 @@ router.put('/:id/convertir', authenticateToken, cotizacionesController.convertir
 router.put('/:id/aprobar', authenticateToken, cotizacionesController.aprobarCotizacion);
 router.put('/:id/rechazar', authenticateToken, cotizacionesController.rechazarCotizacion);
 router.put('/:id/enviar', authenticateToken, cotizacionesController.enviarCotizacion);
+router.put('/:id/manual', authenticateToken, cotizacionesController.updateCotizacionManual);
 router.put('/:id', authenticateToken, cotizacionesController.updateCotizacion);
 router.delete('/:id', authenticateToken, cotizacionesController.deleteCotizacion);
 

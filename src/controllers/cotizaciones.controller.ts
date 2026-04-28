@@ -973,6 +973,283 @@ export const convertirAVenta = async (req: Request, res: Response) => {
     }
 };
 
+export const updateCotizacionManual = async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const {
+        nombre_cotizacion,
+        vuelos,
+        hospedajes,
+        itinerario,
+        incluye,
+        no_incluye,
+        politicas_cancelacion,
+        precios,
+        destino_principal,
+        pasajeros_ids,
+        pasajeros_nuevos,
+        cliente_id
+    } = req.body;
+    const user = (req as any).user;
+
+    try {
+        // 1. Obtener cotización existente
+        const { data: cotizacionExistente, error: cotError } = await supabase
+            .from('cotizaciones')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (cotError || !cotizacionExistente) {
+            return res.status(404).json({ error: 'Cotización no encontrada' });
+        }
+
+        // 2. Validar estado
+        if (cotizacionExistente.estado === 'vendida' || cotizacionExistente.estado === 'perdida') {
+            return res.status(400).json({ error: 'No se puede editar una cotización vendida o perdida' });
+        }
+
+        // 3. Validar permisos
+        if (user.role !== 'admin' && cotizacionExistente.vendedor_id !== user.userId) {
+            return res.status(403).json({ error: 'No autorizado' });
+        }
+
+        // 4. Procesar pasajeros
+        const pasajerosVinculados: Array<{
+            pasajero_id: string;
+            es_titular: boolean;
+            nombre_snapshot: string;
+            apellido_snapshot: string;
+            documento_snapshot: string;
+        }> = [];
+
+        let clienteFinalId = cotizacionExistente.cliente_id;
+
+        // Si cambió el cliente, actualizar
+        if (cliente_id && cliente_id !== cotizacionExistente.cliente_id) {
+            const { data: clienteExistente } = await supabase.from('clientes').select('*').eq('id', cliente_id).single();
+            if (clienteExistente) {
+                clienteFinalId = cliente_id;
+            }
+        }
+
+        // Obtener datos del cliente
+        const { data: clienteData } = await supabase.from('clientes').select('*').eq('id', clienteFinalId).single();
+
+        // Procesar pasajeros existentes
+        if (pasajeros_ids && pasajeros_ids.length > 0) {
+            const { data: pasajerosExistentes } = await supabase.from('pasajeros').select('*').in('id', pasajeros_ids);
+            if (pasajerosExistentes) {
+                for (const p of pasajerosExistentes) {
+                    pasajerosVinculados.push({
+                        pasajero_id: p.id,
+                        es_titular: p.es_cliente_registrado || false,
+                        nombre_snapshot: p.nombre,
+                        apellido_snapshot: p.apellido,
+                        documento_snapshot: p.documento
+                    });
+                }
+            }
+        }
+
+        // Obtener pasajero titular del cliente
+        const { data: pasajeroTitular } = await supabase
+            .from('pasajeros')
+            .select('*')
+            .eq('cliente_titular_id', clienteFinalId)
+            .eq('es_cliente_registrado', true)
+            .single();
+
+        if (pasajeroTitular) {
+            const yaExiste = pasajerosVinculados.some(p => p.pasajero_id === pasajeroTitular.id);
+            if (!yaExiste) {
+                pasajerosVinculados.push({
+                    pasajero_id: pasajeroTitular.id,
+                    es_titular: true,
+                    nombre_snapshot: pasajeroTitular.nombre,
+                    apellido_snapshot: pasajeroTitular.apellido,
+                    documento_snapshot: pasajeroTitular.documento
+                });
+            }
+        }
+
+        // Crear pasajeros nuevos
+        if (pasajeros_nuevos && pasajeros_nuevos.length > 0) {
+            for (const p of pasajeros_nuevos) {
+                const { data: nuevoPasajero, error: pasajeroError } = await supabase
+                    .from('pasajeros')
+                    .insert({
+                        cliente_titular_id: clienteFinalId,
+                        tipo_documento: p.tipo_documento || 'CI',
+                        documento: p.documento,
+                        nombre: p.nombre,
+                        apellido: p.apellido,
+                        fecha_nacimiento: p.fecha_nacimiento,
+                        nacionalidad: p.nacionalidad || 'Uruguay',
+                        es_cliente_registrado: false
+                    })
+                    .select()
+                    .single();
+
+                if (pasajeroError || !nuevoPasajero) {
+                    console.error('Error creating pasajero:', pasajeroError);
+                    continue;
+                }
+
+                pasajerosVinculados.push({
+                    pasajero_id: nuevoPasajero.id,
+                    es_titular: false,
+                    nombre_snapshot: nuevoPasajero.nombre,
+                    apellido_snapshot: nuevoPasajero.apellido,
+                    documento_snapshot: nuevoPasajero.documento
+                });
+            }
+        }
+
+        // 5. Sincronizar vuelos: eliminar existentes + insertar nuevos
+        await supabase.from('vuelos').delete().eq('cotizacion_id', id);
+
+        if (vuelos && vuelos.length > 0) {
+            const vuelosInsert = vuelos.map((v: any, index: number) => ({
+                cotizacion_id: id,
+                tipo_trayecto: v.tipo_trayecto || v.tipo || 'ida',
+                orden: index + 1,
+                aerolinea_codigo: v.aerolinea_codigo,
+                aerolinea_nombre: v.aerolinea_nombre,
+                numero_vuelo: v.numero_vuelo,
+                origen_codigo: v.origen_codigo,
+                origen_nombre: v.origen_nombre || v.origen_ciudad,
+                origen_terminal: v.origen_terminal,
+                destino_codigo: v.destino_codigo,
+                destino_nombre: v.destino_nombre || v.destino_ciudad,
+                destino_terminal: v.destino_terminal,
+                fecha_salida: v.fecha_salida,
+                hora_salida: v.hora_salida,
+                fecha_llegada: v.fecha_llegada,
+                hora_llegada: v.hora_llegada,
+                clase_codigo: v.clase_codigo,
+                clase_nombre: v.clase_nombre,
+                duracion_minutos: v.duracion_minutos,
+                es_escala: v.es_escala || false,
+                datos_completos: v
+            }));
+
+            const { error: vuelosError } = await supabase.from('vuelos').insert(vuelosInsert);
+            if (vuelosError) console.error('Error updating vuelos:', vuelosError);
+        }
+
+        // 6. Sincronizar hospedajes: eliminar existentes + insertar nuevos
+        await supabase.from('hospedajes').delete().eq('cotizacion_id', id);
+
+        if (hospedajes && hospedajes.length > 0) {
+            const hospedajesInsert = hospedajes.map((h: any) => ({
+                cotizacion_id: id,
+                nombre_hotel: h.nombre_hotel,
+                link_hotel: h.link_hotel,
+                cadena_hotelera: h.cadena_hotelera,
+                ciudad: h.ciudad,
+                pais: h.pais,
+                direccion: h.direccion,
+                fecha_checkin: h.fecha_checkin,
+                fecha_checkout: h.fecha_checkout,
+                tipo_habitacion: h.tipo_habitacion,
+                regimen: h.regimen,
+                precio_noche: h.precio_noche,
+                precio_total: h.precio_total,
+                moneda: h.moneda || 'USD',
+                notas: h.notas
+            }));
+
+            const { error: hospedajesError } = await supabase.from('hospedajes').insert(hospedajesInsert);
+            if (hospedajesError) console.error('Error updating hospedajes:', hospedajesError);
+        }
+
+        // 7. Sincronizar pasajeros: eliminar existentes + insertar nuevos
+        await supabase.from('cotizacion_pasajeros').delete().eq('cotizacion_id', id);
+
+        if (pasajerosVinculados.length > 0) {
+            const pasajerosInsert = pasajerosVinculados.map((p: any) => ({
+                cotizacion_id: id,
+                pasajero_id: p.pasajero_id,
+                es_titular: p.es_titular,
+                nombre_snapshot: p.nombre_snapshot,
+                apellido_snapshot: p.apellido_snapshot,
+                documento_snapshot: p.documento_snapshot
+            }));
+
+            const { error: cpError } = await supabase.from('cotizacion_pasajeros').insert(pasajerosInsert);
+            if (cpError) console.error('Error updating cotizacion_pasajeros:', cpError);
+        }
+
+        // 8. Armar paquete_data actualizado
+        const paqueteDataJson: any = {
+            ...(cotizacionExistente.paquete_data || {}),
+            titulo: nombre_cotizacion || cotizacionExistente.nombre_cotizacion || '',
+            destino: destino_principal || cotizacionExistente.destino_principal || '',
+            politicas_cancelacion: politicas_cancelacion || (cotizacionExistente.paquete_data?.politicas_cancelacion) || '',
+            incluye: incluye || (cotizacionExistente.paquete_data?.incluye) || [],
+            no_incluye: no_incluye || (cotizacionExistente.paquete_data?.no_incluye) || [],
+            itinerario: itinerario || cotizacionExistente.itinerario || null,
+            precio_vuelos: precios?.vuelos || 0,
+            precio_hospedajes: precios?.hospedajes || 0,
+            precio_extras: precios?.extras || 0,
+            precio_subtotal: precios?.subtotal || 0,
+            precio_impuestos: precios?.impuestos || 0
+        };
+
+        const precioTotal = parseFloat(precios?.total) || cotizacionExistente.precio_total || 0;
+        const destinoFinal = destino_principal || cotizacionExistente.destino_principal || '';
+
+        // 9. Actualizar cotización
+        const { data: cotizacion, error: updateError } = await supabase
+            .from('cotizaciones')
+            .update({
+                cliente_id: clienteFinalId,
+                nombre_cotizacion: nombre_cotizacion || cotizacionExistente.nombre_cotizacion,
+                precio_total: precioTotal,
+                precio_moneda: precios?.moneda || cotizacionExistente.precio_moneda || 'USD',
+                paquete_data: paqueteDataJson,
+                itinerario: itinerario || cotizacionExistente.itinerario,
+                destino_principal: destinoFinal,
+                num_pasajeros: pasajerosVinculados.length || cotizacionExistente.num_pasajeros || 1,
+                notas: `Cotización manual editada. Destino: ${destinoFinal}`,
+                fecha_actualizacion: new Date().toISOString()
+            })
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (updateError || !cotizacion) {
+            console.error('Error updating cotizacion:', updateError);
+            return res.status(500).json({ error: 'Error al actualizar cotización', details: updateError });
+        }
+
+        // 10. Actualizar fecha_ultima_interaccion del cliente
+        await supabase.from('clientes').update({ fecha_ultima_interaccion: new Date().toISOString() }).eq('id', clienteFinalId);
+
+        // 11. Registrar en historial
+        await supabase.from('historial_cliente').insert({
+            cliente_id: clienteFinalId,
+            tipo: 'cotizacion_editada',
+            cotizacion_id: id,
+            descripcion: `Cotización ${cotizacion.codigo} editada`,
+            realizado_por: user.userId,
+            realizado_por_nombre: user.nombre || user.email || 'Usuario'
+        });
+
+        res.json({
+            message: 'Cotización actualizada exitosamente',
+            cotizacion: {
+                ...cotizacion,
+                cliente: clienteData,
+                pasajeros: pasajerosVinculados.length
+            }
+        });
+    } catch (error: any) {
+        console.error('Error updating manual quote:', error);
+        res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+};
+
 export const updateCotizacion = async (req: Request, res: Response) => {
     const { id } = req.params;
     const data = req.body;
