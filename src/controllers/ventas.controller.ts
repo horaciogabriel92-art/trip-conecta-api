@@ -348,14 +348,42 @@ export const getEstadisticas = async (req: Request, res: Response) => {
     const user = (req as any).user;
     
     try {
+        // Calcular rango del mes actual
+        const ahora = new Date();
+        const inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1).toISOString();
+        const finMes = new Date(ahora.getFullYear(), ahora.getMonth() + 1, 0, 23, 59, 59, 999).toISOString();
+
         // Si es vendedor, solo sus stats
         if (user.role !== 'admin') {
-            const { data: ventas, error } = await supabase
-                .from('ventas')
-                .select('precio_total, comision_monto, comision_estado')
-                .eq('vendedor_id', user.userId);
+            const [
+                { data: ventas, error: ventasError },
+                { data: cotizaciones, error: cotError },
+                { data: cotizacionesMes, error: cotMesError },
+                { data: cotizacionesEnviadas, error: cotEnvError }
+            ] = await Promise.all([
+                supabase
+                    .from('ventas')
+                    .select('precio_total, comision_monto, comision_estado')
+                    .eq('vendedor_id', user.userId),
+                supabase
+                    .from('cotizaciones')
+                    .select('estado')
+                    .eq('vendedor_id', user.userId),
+                supabase
+                    .from('cotizaciones')
+                    .select('estado')
+                    .eq('vendedor_id', user.userId)
+                    .gte('fecha_creacion', inicioMes)
+                    .lte('fecha_creacion', finMes),
+                supabase
+                    .from('cotizaciones')
+                    .select('id')
+                    .eq('vendedor_id', user.userId)
+                    .eq('estado', 'enviada')
+            ]);
 
-            if (error) throw error;
+            if (ventasError) throw ventasError;
+            if (cotError) throw cotError;
 
             const totalVentas = ventas.reduce((sum, v) => sum + v.precio_total, 0);
             const totalComisiones = ventas.reduce((sum, v) => sum + v.comision_monto, 0);
@@ -363,20 +391,51 @@ export const getEstadisticas = async (req: Request, res: Response) => {
                 .filter(v => v.comision_estado === 'pendiente')
                 .reduce((sum, v) => sum + v.comision_monto, 0);
 
+            const cantidadVentas = ventas.length;
+            const ticketPromedio = cantidadVentas > 0 ? totalVentas / cantidadVentas : 0;
+
+            const totalCotizaciones = cotizaciones?.length || 0;
+            const cotizacionesVendidas = cotizaciones?.filter((c: any) => c.estado === 'vendida').length || 0;
+            const tasaConversion = totalCotizaciones > 0 ? (cotizacionesVendidas / totalCotizaciones) * 100 : 0;
+
             res.json({
-                cantidad_ventas: ventas.length,
+                cantidad_ventas: cantidadVentas,
                 total_ventas: totalVentas,
                 total_comisiones: totalComisiones,
                 comisiones_pendientes: comisionesPendientes,
-                comisiones_pagadas: totalComisiones - comisionesPendientes
+                comisiones_pagadas: totalComisiones - comisionesPendientes,
+                ticket_promedio: ticketPromedio,
+                cotizaciones_mes: cotizacionesMes?.length || 0,
+                cotizaciones_enviadas: cotizacionesEnviadas?.length || 0,
+                tasa_conversion: Math.round(tasaConversion * 10) / 10
             });
         } else {
             // Stats globales para admin
-            const { data: ventas, error } = await supabase
-                .from('ventas')
-                .select('precio_total, comision_monto, comision_estado');
+            const [
+                { data: ventas, error: ventasError },
+                { data: cotizaciones, error: cotError },
+                { data: cotizacionesMes, error: cotMesError },
+                { data: cotizacionesEnviadas, error: cotEnvError }
+            ] = await Promise.all([
+                supabase
+                    .from('ventas')
+                    .select('precio_total, comision_monto, comision_estado'),
+                supabase
+                    .from('cotizaciones')
+                    .select('estado'),
+                supabase
+                    .from('cotizaciones')
+                    .select('estado')
+                    .gte('fecha_creacion', inicioMes)
+                    .lte('fecha_creacion', finMes),
+                supabase
+                    .from('cotizaciones')
+                    .select('id')
+                    .eq('estado', 'enviada')
+            ]);
 
-            if (error) throw error;
+            if (ventasError) throw ventasError;
+            if (cotError) throw cotError;
 
             const { count: cantidadVendedores } = await supabase
                 .from('users')
@@ -390,13 +449,24 @@ export const getEstadisticas = async (req: Request, res: Response) => {
                 .filter(v => v.comision_estado === 'pendiente')
                 .reduce((sum, v) => sum + v.comision_monto, 0);
 
+            const cantidadVentas = ventas.length;
+            const ticketPromedio = cantidadVentas > 0 ? totalVentas / cantidadVentas : 0;
+
+            const totalCotizaciones = cotizaciones?.length || 0;
+            const cotizacionesVendidas = cotizaciones?.filter((c: any) => c.estado === 'vendida').length || 0;
+            const tasaConversion = totalCotizaciones > 0 ? (cotizacionesVendidas / totalCotizaciones) * 100 : 0;
+
             res.json({
-                cantidad_ventas: ventas.length,
+                cantidad_ventas: cantidadVentas,
                 cantidad_vendedores: cantidadVendedores || 0,
                 total_ventas: totalVentas,
                 total_comisiones: totalComisiones,
                 comisiones_pendientes: comisionesPendientes,
-                comisiones_pagadas: totalComisiones - comisionesPendientes
+                comisiones_pagadas: totalComisiones - comisionesPendientes,
+                ticket_promedio: ticketPromedio,
+                cotizaciones_mes: cotizacionesMes?.length || 0,
+                cotizaciones_enviadas: cotizacionesEnviadas?.length || 0,
+                tasa_conversion: Math.round(tasaConversion * 10) / 10
             });
         }
     } catch (error) {
