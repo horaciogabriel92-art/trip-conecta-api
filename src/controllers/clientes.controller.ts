@@ -17,7 +17,8 @@ export const getClientes = async (req: Request, res: Response) => {
     try {
         let query = supabase
             .from('clientes')
-            .select('*', { count: 'exact' });
+            .select('*', { count: 'exact' })
+            .eq('tenant_id', user.tenantId);
         
         // Si es vendedor (no admin), solo ve sus clientes
         if (user?.role !== 'admin') {
@@ -71,6 +72,7 @@ export const buscarClientes = async (req: Request, res: Response) => {
         let dbQuery = supabase
             .from('clientes')
             .select('id, nombre, apellido, email, telefono, tipo_documento, documento')
+            .eq('tenant_id', user.tenantId)
             .or(`nombre.ilike.${searchTerm},apellido.ilike.${searchTerm},email.ilike.${searchTerm},documento.ilike.${searchTerm}`);
         
         // Si es vendedor (no admin), solo busca en sus clientes
@@ -106,6 +108,7 @@ export const getClienteById = async (req: Request, res: Response) => {
             .from('clientes')
             .select('*')
             .eq('id', id)
+            .eq('tenant_id', user.tenantId)
             .single();
         
         if (clienteError || !cliente) {

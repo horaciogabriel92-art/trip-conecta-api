@@ -1,22 +1,38 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { supabase } from '../config/supabase';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
     throw new Error('❌ CRITICAL: JWT_SECRET environment variable is required');
 }
 
-export const authenticateToken = (req: Request, res: Response, next: NextFunction) => {
+export const authenticateToken = async (req: Request, res: Response, next: NextFunction) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[ 1];
 
     if (!token) return res.status(401).json({ error: 'Token requerido' });
 
-    jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
-        if (err) return res.status(403).json({ error: 'Token inválido o expirado' });
-        (req as any).user = user;
+    try {
+        const decoded: any = jwt.verify(token, JWT_SECRET);
+        
+        // Fallback para tokens viejos sin tenantId
+        if (!decoded.tenantId) {
+            const { data: user } = await supabase
+                .from('users')
+                .select('tenant_id')
+                .eq('id', decoded.userId)
+                .single();
+            if (user?.tenant_id) {
+                decoded.tenantId = user.tenant_id;
+            }
+        }
+        
+        (req as any).user = decoded;
         next();
-    });
+    } catch (err: any) {
+        return res.status(403).json({ error: 'Token inválido o expirado' });
+    }
 };
 
 export const authorizeRole = (roles: string[]) => {

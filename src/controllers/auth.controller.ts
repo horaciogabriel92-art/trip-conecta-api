@@ -52,7 +52,8 @@ export const login = async (req: Request, res: Response) => {
       { 
         userId: user.id, 
         email: user.email, 
-        role: user.rol 
+        role: user.rol,
+        tenantId: user.tenant_id
       },
       JWT_SECRET,
       { expiresIn: '7d' }
@@ -66,6 +67,7 @@ export const login = async (req: Request, res: Response) => {
         nombre: user.nombre,
         apellido: user.apellido,
         rol: user.rol,
+        tenant_id: user.tenant_id,
         comision_porcentaje: user.comision_porcentaje,
         preferencias: user.preferencias || {}
       }

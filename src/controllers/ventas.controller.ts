@@ -5,7 +5,7 @@ import { findComprobanteFile } from '../utils/fileSearch';
 export const getVentas = async (req: Request, res: Response) => {
     const user = (req as any).user;
     try {
-        let query = supabase.from('ventas').select('*');
+        let query = supabase.from('ventas').select('*').eq('tenant_id', user.tenantId);
         
         // Si no es admin, solo ver las suyas
         if (user.role !== 'admin') {
@@ -364,20 +364,24 @@ export const getEstadisticas = async (req: Request, res: Response) => {
                 supabase
                     .from('ventas')
                     .select('precio_total, comision_monto, comision_estado')
+                    .eq('tenant_id', user.tenantId)
                     .eq('vendedor_id', user.userId),
                 supabase
                     .from('cotizaciones')
                     .select('estado')
+                    .eq('tenant_id', user.tenantId)
                     .eq('vendedor_id', user.userId),
                 supabase
                     .from('cotizaciones')
                     .select('estado')
+                    .eq('tenant_id', user.tenantId)
                     .eq('vendedor_id', user.userId)
                     .gte('fecha_creacion', inicioMes)
                     .lte('fecha_creacion', finMes),
                 supabase
                     .from('cotizaciones')
                     .select('id')
+                    .eq('tenant_id', user.tenantId)
                     .eq('vendedor_id', user.userId)
                     .eq('estado', 'enviada')
             ]);
