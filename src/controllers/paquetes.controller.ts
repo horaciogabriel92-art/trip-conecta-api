@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
+import { getTenantId } from '../utils/tenant';
 
 // Helper para truncar strings y evitar error 22001 (value too long)
 function truncar(str: string | undefined, maxLength: number): string | undefined {
@@ -179,10 +180,12 @@ function mapearPaqueteFrontend(data: any): PaqueteFrontend {
 }
 
 export const getAllPaquetes = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     try {
         const { data: paquetes, error } = await supabase
             .from('paquetes')
             .select('*')
+            .eq('tenant_id', tenantId)
             .neq('estado', 'eliminado')
             .order('fecha_creacion', { ascending: false });
 
@@ -201,11 +204,13 @@ export const getAllPaquetes = async (req: Request, res: Response) => {
 };
 
 export const getPaqueteById = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     try {
         const { data: paquete, error } = await supabase
             .from('paquetes')
             .select('*')
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .single();
 
@@ -222,6 +227,7 @@ export const getPaqueteById = async (req: Request, res: Response) => {
 };
 
 export const createPaquete = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const dataFrontend: PaqueteFrontend = req.body;
     
     console.log('Creating paquete with frontend data:', JSON.stringify(dataFrontend, null, 2));
@@ -246,7 +252,7 @@ export const createPaquete = async (req: Request, res: Response) => {
 
         const { data: paquete, error } = await supabase
             .from('paquetes')
-            .insert(dataBD)
+            .insert({ ...dataBD, tenant_id: tenantId })
             .select()
             .single();
 
@@ -273,6 +279,7 @@ export const createPaquete = async (req: Request, res: Response) => {
 };
 
 export const updatePaquete = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     const dataFrontend: PaqueteFrontend = req.body;
     
@@ -290,6 +297,7 @@ export const updatePaquete = async (req: Request, res: Response) => {
         const { data: paquete, error } = await supabase
             .from('paquetes')
             .update(dataBD)
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .select()
             .single();
@@ -317,12 +325,14 @@ export const updatePaquete = async (req: Request, res: Response) => {
 };
 
 export const deletePaquete = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     try {
         // Soft delete
         const { data: paquete, error } = await supabase
             .from('paquetes')
             .update({ estado: 'eliminado' })
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .select()
             .single();

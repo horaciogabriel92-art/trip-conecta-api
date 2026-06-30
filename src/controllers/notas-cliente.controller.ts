@@ -1,11 +1,13 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
+import { getTenantId } from '../utils/tenant';
 
 /**
  * Obtener todas las notas de un cliente
  * GET /clientes/:cliente_id/notas
  */
 export const getNotasByCliente = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     console.log('[getNotasByCliente] Ruta ejecutada. Params:', req.params);
     const cliente_id = req.params.id;
     const userId = (req as any).user.userId;
@@ -17,6 +19,7 @@ export const getNotasByCliente = async (req: Request, res: Response) => {
         const { data: cliente, error: clienteError } = await supabase
             .from('clientes')
             .select('id')
+            .eq('tenant_id', tenantId)
             .eq('id', cliente_id)
             .single();
 
@@ -39,6 +42,7 @@ export const getNotasByCliente = async (req: Request, res: Response) => {
                 *,
                 vendedor:vendedor_id (id, nombre, apellido)
             `)
+            .eq('tenant_id', tenantId)
             .eq('cliente_id', cliente_id)
             .order('created_at', { ascending: false });
 
@@ -66,6 +70,7 @@ export const getNotasByCliente = async (req: Request, res: Response) => {
  * POST /clientes/:cliente_id/notas
  */
 export const createNota = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const cliente_id = req.params.id;
     const { contenido, tipo = 'general', es_privada = false } = req.body;
     const userId = (req as any).user.userId;
@@ -79,6 +84,7 @@ export const createNota = async (req: Request, res: Response) => {
         const { data: cliente, error: clienteError } = await supabase
             .from('clientes')
             .select('id')
+            .eq('tenant_id', tenantId)
             .eq('id', cliente_id)
             .single();
 
@@ -95,7 +101,8 @@ export const createNota = async (req: Request, res: Response) => {
                 vendedor_id: userId,
                 contenido: contenido.trim(),
                 tipo,
-                es_privada
+                es_privada,
+                tenant_id: tenantId
             })
             .select(`
                 *,
@@ -116,6 +123,7 @@ export const createNota = async (req: Request, res: Response) => {
         await supabase
             .from('clientes')
             .update({ fecha_ultima_interaccion: new Date().toISOString() })
+            .eq('tenant_id', tenantId)
             .eq('id', cliente_id);
 
         res.status(201).json({ message: 'Nota creada', nota });
@@ -130,6 +138,7 @@ export const createNota = async (req: Request, res: Response) => {
  * PUT /notas/:id
  */
 export const updateNota = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     const { contenido, tipo, es_privada } = req.body;
     const userId = (req as any).user.userId;
@@ -140,6 +149,7 @@ export const updateNota = async (req: Request, res: Response) => {
         const { data: notaExistente, error: notaError } = await supabase
             .from('notas_cliente')
             .select('id, vendedor_id')
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .single();
 
@@ -160,6 +170,7 @@ export const updateNota = async (req: Request, res: Response) => {
         const { data: nota, error } = await supabase
             .from('notas_cliente')
             .update(updates)
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .select(`
                 *,
@@ -184,6 +195,7 @@ export const updateNota = async (req: Request, res: Response) => {
  * DELETE /notas/:id
  */
 export const deleteNota = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     const userId = (req as any).user.userId;
     const userRole = (req as any).user.rol;
@@ -193,6 +205,7 @@ export const deleteNota = async (req: Request, res: Response) => {
         const { data: notaExistente, error: notaError } = await supabase
             .from('notas_cliente')
             .select('id, vendedor_id')
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .single();
 
@@ -208,6 +221,7 @@ export const deleteNota = async (req: Request, res: Response) => {
         const { error } = await supabase
             .from('notas_cliente')
             .delete()
+            .eq('tenant_id', tenantId)
             .eq('id', id);
 
         if (error) {

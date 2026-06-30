@@ -132,10 +132,11 @@ export async function sendRecordatorioSeguimiento(to: string, nombre: string, co
   });
 }
 
-export async function getAdminEmails(): Promise<string[]> {
+export async function getAdminEmails(tenantId: string): Promise<string[]> {
   const { data: admins, error } = await supabase
     .from('users')
     .select('email')
+    .eq('tenant_id', tenantId)
     .eq('rol', 'admin')
     .eq('activo', true);
 

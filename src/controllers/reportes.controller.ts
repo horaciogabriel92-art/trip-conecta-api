@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
+import { getTenantId } from '../utils/tenant';
 
 // Helper para formatear mes
 const formatMonth = (dateStr: string) => {
@@ -8,8 +9,8 @@ const formatMonth = (dateStr: string) => {
 };
 
 // Helper para aplicar filtros base
-const getBaseQuery = (table: string, fechaField: string, fechaDesde: string, fechaHasta: string, vendedorId?: string) => {
-  let query = supabase.from(table).select('*');
+const getBaseQuery = (table: string, fechaField: string, fechaDesde: string, fechaHasta: string, tenantId: string, vendedorId?: string) => {
+  let query = supabase.from(table).select('*').eq('tenant_id', tenantId);
   const hastaInclusive = fechaHasta.includes('T') ? fechaHasta : `${fechaHasta}T23:59:59.999Z`;
   query = query.gte(fechaField, fechaDesde).lte(fechaField, hastaInclusive);
   if (vendedorId) {
@@ -19,6 +20,7 @@ const getBaseQuery = (table: string, fechaField: string, fechaDesde: string, fec
 };
 
 export const getPipelineReport = async (req: Request, res: Response) => {
+  const tenantId = getTenantId(req);
   const user = (req as any).user;
   if (user.role !== 'admin') {
     return res.status(403).json({ error: 'No autorizado' });
@@ -31,7 +33,7 @@ export const getPipelineReport = async (req: Request, res: Response) => {
 
   try {
     const { data: cotizaciones, error } = await getBaseQuery(
-      'cotizaciones', 'fecha_creacion', fecha_desde as string, fecha_hasta as string, vendedor_id as string | undefined
+      'cotizaciones', 'fecha_creacion', fecha_desde as string, fecha_hasta as string, tenantId, vendedor_id as string | undefined
     );
     if (error) throw error;
 
@@ -45,7 +47,7 @@ export const getPipelineReport = async (req: Request, res: Response) => {
     const ticketPromedioCotizado = total > 0 ? Number((cotizacionesArr.reduce((sum: number, c: any) => sum + (Number(c.precio_total) || 0), 0) / total).toFixed(2)) : 0;
 
     const { data: ventasData } = await getBaseQuery(
-      'ventas', 'fecha_creacion', fecha_desde as string, fecha_hasta as string, vendedor_id as string | undefined
+      'ventas', 'fecha_creacion', fecha_desde as string, fecha_hasta as string, tenantId, vendedor_id as string | undefined
     );
     const ventasArr = ventasData || [];
     const ticketPromedioVendido = ventasArr.length > 0 ? Number((ventasArr.reduce((sum: number, v: any) => sum + (Number(v.precio_total) || 0), 0) / ventasArr.length).toFixed(2)) : 0;
@@ -65,7 +67,7 @@ export const getPipelineReport = async (req: Request, res: Response) => {
     const vendedorIds = [...new Set(cotizacionesArr.map((c: any) => c.vendedor_id).filter(Boolean))];
     let vendedoresMap: Record<string, string> = {};
     if (vendedorIds.length > 0) {
-      const { data: usersData } = await supabase.from('users').select('id, nombre, apellido').in('id', vendedorIds);
+      const { data: usersData } = await supabase.from('users').select('id, nombre, apellido').eq('tenant_id', tenantId).in('id', vendedorIds);
       (usersData || []).forEach((u: any) => {
         vendedoresMap[u.id] = `${u.nombre || ''} ${u.apellido || ''}`.trim();
       });
@@ -106,6 +108,7 @@ export const getPipelineReport = async (req: Request, res: Response) => {
 };
 
 export const getCobranzaReport = async (req: Request, res: Response) => {
+  const tenantId = getTenantId(req);
   const user = (req as any).user;
   if (user.role !== 'admin') {
     return res.status(403).json({ error: 'No autorizado' });
@@ -118,7 +121,7 @@ export const getCobranzaReport = async (req: Request, res: Response) => {
 
   try {
     const { data: ventasData, error: ventasError } = await getBaseQuery(
-      'ventas', 'fecha_creacion', fecha_desde as string, fecha_hasta as string, vendedor_id as string | undefined
+      'ventas', 'fecha_creacion', fecha_desde as string, fecha_hasta as string, tenantId, vendedor_id as string | undefined
     );
     if (ventasError) throw ventasError;
     const ventasArr = ventasData || [];
@@ -126,7 +129,7 @@ export const getCobranzaReport = async (req: Request, res: Response) => {
     const ventaIds = ventasArr.map((v: any) => v.id);
     let pagosArr: any[] = [];
     if (ventaIds.length > 0) {
-      const { data: pagosData } = await supabase.from('pagos_venta').select('*').in('venta_id', ventaIds);
+      const { data: pagosData } = await supabase.from('pagos_venta').select('*').eq('tenant_id', tenantId).in('venta_id', ventaIds);
       pagosArr = pagosData || [];
     }
 
@@ -175,6 +178,7 @@ export const getCobranzaReport = async (req: Request, res: Response) => {
 };
 
 export const getVendedoresReport = async (req: Request, res: Response) => {
+  const tenantId = getTenantId(req);
   const user = (req as any).user;
   if (user.role !== 'admin') {
     return res.status(403).json({ error: 'No autorizado' });
@@ -189,6 +193,7 @@ export const getVendedoresReport = async (req: Request, res: Response) => {
     const { data: vendedoresData, error: vendedoresError } = await supabase
       .from('users')
       .select('id, nombre, apellido, email, activo')
+      .eq('tenant_id', tenantId)
       .eq('rol', 'vendedor');
     if (vendedoresError) throw vendedoresError;
 
@@ -197,6 +202,7 @@ export const getVendedoresReport = async (req: Request, res: Response) => {
     const { data: cotizacionesData } = await supabase
       .from('cotizaciones')
       .select('id, vendedor_id, precio_total, estado, fecha_creacion')
+      .eq('tenant_id', tenantId)
       .gte('fecha_creacion', fecha_desde as string)
       .lte('fecha_creacion', hastaInclusive);
     const cotizacionesArr = cotizacionesData || [];
@@ -204,6 +210,7 @@ export const getVendedoresReport = async (req: Request, res: Response) => {
     const { data: ventasData } = await supabase
       .from('ventas')
       .select('id, vendedor_id, precio_total, comision_monto, fecha_creacion')
+      .eq('tenant_id', tenantId)
       .gte('fecha_creacion', fecha_desde as string)
       .lte('fecha_creacion', hastaInclusive);
     const ventasArr = ventasData || [];
@@ -211,6 +218,7 @@ export const getVendedoresReport = async (req: Request, res: Response) => {
     const { data: pagosComData } = await supabase
       .from('pagos_comisiones')
       .select('id, vendedor_id, monto, fecha_pago')
+      .eq('tenant_id', tenantId)
       .gte('fecha_pago', fecha_desde as string)
       .lte('fecha_pago', hastaInclusive);
     const pagosComArr = pagosComData || [];
@@ -253,6 +261,7 @@ export const getVendedoresReport = async (req: Request, res: Response) => {
 };
 
 export const getProductosReport = async (req: Request, res: Response) => {
+  const tenantId = getTenantId(req);
   const user = (req as any).user;
   if (user.role !== 'admin') {
     return res.status(403).json({ error: 'No autorizado' });
@@ -265,14 +274,14 @@ export const getProductosReport = async (req: Request, res: Response) => {
 
   try {
     const { data: ventasData } = await getBaseQuery(
-      'ventas', 'fecha_creacion', fecha_desde as string, fecha_hasta as string, vendedor_id as string | undefined
+      'ventas', 'fecha_creacion', fecha_desde as string, fecha_hasta as string, tenantId, vendedor_id as string | undefined
     );
     const ventasArr = ventasData || [];
     const cotizacionIds = ventasArr.map((v: any) => v.cotizacion_id).filter(Boolean);
 
     let cotizacionesArr: any[] = [];
     if (cotizacionIds.length > 0) {
-      const { data: cotData } = await supabase.from('cotizaciones').select('id, destino_principal, paquete_id, paquete_data').in('id', cotizacionIds);
+      const { data: cotData } = await supabase.from('cotizaciones').select('id, destino_principal, paquete_id, paquete_data').eq('tenant_id', tenantId).in('id', cotizacionIds);
       cotizacionesArr = cotData || [];
     }
 
@@ -295,7 +304,7 @@ export const getProductosReport = async (req: Request, res: Response) => {
 
     let vuelosArr: any[] = [];
     if (cotizacionIds.length > 0) {
-      const { data: vuelosData } = await supabase.from('vuelos').select('cotizacion_id, aerolinea_codigo, aerolinea_nombre').in('cotizacion_id', cotizacionIds);
+      const { data: vuelosData } = await supabase.from('vuelos').select('cotizacion_id, aerolinea_codigo, aerolinea_nombre').eq('tenant_id', tenantId).in('cotizacion_id', cotizacionIds);
       vuelosArr = vuelosData || [];
     }
 
@@ -311,7 +320,7 @@ export const getProductosReport = async (req: Request, res: Response) => {
 
     let hospedajesArr: any[] = [];
     if (cotizacionIds.length > 0) {
-      const { data: hospData } = await supabase.from('hospedajes').select('cotizacion_id, ciudad, noches, precio_total').in('cotizacion_id', cotizacionIds);
+      const { data: hospData } = await supabase.from('hospedajes').select('cotizacion_id, ciudad, noches, precio_total').eq('tenant_id', tenantId).in('cotizacion_id', cotizacionIds);
       hospedajesArr = hospData || [];
     }
 
@@ -337,6 +346,7 @@ export const getProductosReport = async (req: Request, res: Response) => {
 };
 
 export const getCRMReport = async (req: Request, res: Response) => {
+  const tenantId = getTenantId(req);
   const user = (req as any).user;
   if (user.role !== 'admin') {
     return res.status(403).json({ error: 'No autorizado' });
@@ -353,13 +363,15 @@ export const getCRMReport = async (req: Request, res: Response) => {
     const { data: clientesData } = await supabase
       .from('clientes')
       .select('id, nombre, apellido, fuente_lead, estado, fecha_registro, fecha_ultima_interaccion')
+      .eq('tenant_id', tenantId)
       .gte('fecha_registro', fecha_desde as string)
       .lte('fecha_registro', hastaInclusive);
     const clientesArr = clientesData || [];
 
     const { data: todosClientesData } = await supabase
       .from('clientes')
-      .select('id, nombre, apellido, fuente_lead, estado, fecha_registro, fecha_ultima_interaccion');
+      .select('id, nombre, apellido, fuente_lead, estado, fecha_registro, fecha_ultima_interaccion')
+      .eq('tenant_id', tenantId);
     const todosClientesArr = todosClientesData || [];
 
     const clienteIds = todosClientesArr.map((c: any) => c.id);
@@ -368,7 +380,7 @@ export const getCRMReport = async (req: Request, res: Response) => {
       const batchSize = 200;
       for (let i = 0; i < clienteIds.length; i += batchSize) {
         const batch = clienteIds.slice(i, i + batchSize);
-        const { data: cotBatch } = await supabase.from('cotizaciones').select('cliente_id, fecha_creacion').in('cliente_id', batch);
+        const { data: cotBatch } = await supabase.from('cotizaciones').select('cliente_id, fecha_creacion').eq('tenant_id', tenantId).in('cliente_id', batch);
         cotizacionesClientes = cotizacionesClientes.concat(cotBatch || []);
       }
     }
@@ -376,6 +388,7 @@ export const getCRMReport = async (req: Request, res: Response) => {
     const { data: ventasData } = await supabase
       .from('ventas')
       .select('id, cotizacion_id, fecha_creacion')
+      .eq('tenant_id', tenantId)
       .gte('fecha_creacion', fecha_desde as string)
       .lte('fecha_creacion', hastaInclusive);
     const ventasArr = ventasData || [];
@@ -383,7 +396,7 @@ export const getCRMReport = async (req: Request, res: Response) => {
 
     let cotizacionesVentas: any[] = [];
     if (ventasCotizacionIds.length > 0) {
-      const { data: cotV } = await supabase.from('cotizaciones').select('id, cliente_id').in('id', ventasCotizacionIds);
+      const { data: cotV } = await supabase.from('cotizaciones').select('id, cliente_id').eq('tenant_id', tenantId).in('id', ventasCotizacionIds);
       cotizacionesVentas = cotV || [];
     }
     const clientesConVentaIds = new Set(cotizacionesVentas.map((c: any) => c.cliente_id));

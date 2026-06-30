@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import { supabase } from '../config/supabase';
 import { z } from 'zod';
 import { sendEmailAsync } from '../services/email.service';
+import { getTenantId } from '../utils/tenant';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -45,6 +46,7 @@ export const login = async (req: Request, res: Response) => {
     await supabase
       .from('users')
       .update({ ultimo_acceso: new Date().toISOString() })
+      .eq('tenant_id', user.tenant_id)
       .eq('id', user.id);
 
     // Generar JWT
@@ -80,12 +82,14 @@ export const login = async (req: Request, res: Response) => {
 
 export const getProfile = async (req: Request, res: Response) => {
   try {
+    const tenantId = getTenantId(req);
     const userId = (req as any).user?.userId;
     
     const { data: user, error } = await supabase
       .from('users')
       .select('id, email, nombre, apellido, telefono, rol, comision_porcentaje, preferencias, fecha_registro')
       .eq('id', userId)
+      .eq('tenant_id', tenantId)
       .single();
 
     if (error || !user) {
@@ -101,6 +105,7 @@ export const getProfile = async (req: Request, res: Response) => {
 
 export const updateProfile = async (req: Request, res: Response) => {
   try {
+    const tenantId = getTenantId(req);
     const userId = (req as any).user?.userId;
     const { nombre, apellido, telefono, preferencias } = req.body;
 
@@ -110,6 +115,7 @@ export const updateProfile = async (req: Request, res: Response) => {
         .from('users')
         .select('preferencias')
         .eq('id', userId)
+        .eq('tenant_id', tenantId)
         .single();
       updateData.preferencias = { ...(current?.preferencias || {}), ...preferencias };
     }
@@ -118,6 +124,7 @@ export const updateProfile = async (req: Request, res: Response) => {
       .from('users')
       .update(updateData)
       .eq('id', userId)
+      .eq('tenant_id', tenantId)
       .select()
       .single();
 
@@ -135,6 +142,7 @@ export const updateProfile = async (req: Request, res: Response) => {
 // Admin: Crear nuevo vendedor
 export const createUser = async (req: Request, res: Response) => {
   try {
+    const tenantId = getTenantId(req);
     if ((req as any).user?.role !== 'admin') {
       return res.status(403).json({ error: 'No autorizado' });
     }
@@ -152,7 +160,8 @@ export const createUser = async (req: Request, res: Response) => {
         nombre,
         apellido,
         rol: rol || 'vendedor',
-        comision_porcentaje: comision_porcentaje || null
+        comision_porcentaje: comision_porcentaje || null,
+        tenant_id: tenantId
       })
       .select()
       .single();
@@ -183,6 +192,7 @@ export const createUser = async (req: Request, res: Response) => {
 // Admin: Actualizar usuario existente
 export const updateUser = async (req: Request, res: Response) => {
   try {
+    const tenantId = getTenantId(req);
     if ((req as any).user?.role !== 'admin') {
       return res.status(403).json({ error: 'No autorizado' });
     }
@@ -196,6 +206,7 @@ export const updateUser = async (req: Request, res: Response) => {
         .from('users')
         .select('id')
         .eq('email', email)
+        .eq('tenant_id', tenantId)
         .neq('id', id)
         .single();
 
@@ -221,6 +232,7 @@ export const updateUser = async (req: Request, res: Response) => {
       .from('users')
       .update(updateData)
       .eq('id', id)
+      .eq('tenant_id', tenantId)
       .select()
       .single();
 
@@ -250,6 +262,7 @@ export const updateUser = async (req: Request, res: Response) => {
 // Admin: Listar todos los usuarios
 export const getAllUsers = async (req: Request, res: Response) => {
   try {
+    const tenantId = getTenantId(req);
     if ((req as any).user?.role !== 'admin') {
       return res.status(403).json({ error: 'No autorizado' });
     }
@@ -257,6 +270,7 @@ export const getAllUsers = async (req: Request, res: Response) => {
     const { data: users, error } = await supabase
       .from('users')
       .select('id, email, nombre, apellido, telefono, rol, comision_porcentaje, activo, fecha_registro, ultimo_acceso')
+      .eq('tenant_id', tenantId)
       .order('fecha_registro', { ascending: false });
 
     if (error) {
@@ -272,6 +286,7 @@ export const getAllUsers = async (req: Request, res: Response) => {
 
 export const changePassword = async (req: Request, res: Response) => {
   try {
+    const tenantId = getTenantId(req);
     const userId = (req as any).user?.userId;
     const { currentPassword, newPassword } = req.body;
 
@@ -283,6 +298,7 @@ export const changePassword = async (req: Request, res: Response) => {
       .from('users')
       .select('password')
       .eq('id', userId)
+      .eq('tenant_id', tenantId)
       .single();
 
     if (error || !user) {
@@ -299,7 +315,8 @@ export const changePassword = async (req: Request, res: Response) => {
     await supabase
       .from('users')
       .update({ password: hashedPassword })
-      .eq('id', userId);
+      .eq('id', userId)
+      .eq('tenant_id', tenantId);
 
     res.json({ message: 'Contraseña actualizada exitosamente' });
   } catch (error) {
@@ -327,7 +344,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
 
     const { data: user } = await supabase
       .from('users')
-      .select('id, email, nombre, apellido')
+      .select('id, email, nombre, apellido, tenant_id')
       .eq('email', email)
       .single();
 
@@ -345,6 +362,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
         reset_token: token,
         reset_token_expires: expiresAt.toISOString()
       })
+      .eq('tenant_id', user.tenant_id)
       .eq('id', user.id);
 
     const resetLink = `${process.env.PANEL_URL || 'https://panel.tripconecta.com'}/login/reset-password?token=${token}`;
@@ -373,7 +391,7 @@ export const resetPassword = async (req: Request, res: Response) => {
 
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, reset_token, reset_token_expires')
+      .select('id, reset_token, reset_token_expires, tenant_id')
       .eq('reset_token', token)
       .single();
 
@@ -397,6 +415,7 @@ export const resetPassword = async (req: Request, res: Response) => {
         reset_token: null,
         reset_token_expires: null
       })
+      .eq('tenant_id', user.tenant_id)
       .eq('id', user.id);
 
     res.json({ message: 'Contraseña restablecida exitosamente' });

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
+import { getTenantId } from '../utils/tenant';
 
 /**
  * Obtener notificaciones del usuario actual
@@ -7,12 +8,14 @@ import { supabase } from '../config/supabase';
  * Para vendedores: obtiene sus notificaciones específicas
  */
 export const getNotificaciones = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const user = (req as any).user;
     
     try {
         let query = supabase
             .from('notificaciones')
             .select('*')
+            .eq('tenant_id', tenantId)
             .order('created_at', { ascending: false })
             .limit(50);
         
@@ -48,6 +51,7 @@ export const getNotificaciones = async (req: Request, res: Response) => {
  * Marcar notificación como leída
  */
 export const marcarLeida = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     const user = (req as any).user;
     
@@ -56,6 +60,7 @@ export const marcarLeida = async (req: Request, res: Response) => {
         const { data: notif, error: findError } = await supabase
             .from('notificaciones')
             .select('*')
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .single();
         
@@ -73,6 +78,7 @@ export const marcarLeida = async (req: Request, res: Response) => {
             .update({ 
                 leida: true
             })
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .select()
             .single();
@@ -93,6 +99,7 @@ export const marcarLeida = async (req: Request, res: Response) => {
  * Marcar todas las notificaciones como leídas
  */
 export const marcarTodasLeidas = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const user = (req as any).user;
     
     try {
@@ -101,6 +108,7 @@ export const marcarTodasLeidas = async (req: Request, res: Response) => {
             .update({ 
                 leida: true
             })
+            .eq('tenant_id', tenantId)
             .eq('leida', false);
         
         if (user.role === 'admin') {
@@ -127,6 +135,7 @@ export const marcarTodasLeidas = async (req: Request, res: Response) => {
  * Crear notificación manual (solo admin)
  */
 export const crearNotificacion = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { usuario_id, tipo, titulo, mensaje, referencia_id, referencia_tipo } = req.body;
     const user = (req as any).user;
     
@@ -146,7 +155,8 @@ export const crearNotificacion = async (req: Request, res: Response) => {
                 referencia_id: referencia_id || null,
                 referencia_tipo: referencia_tipo || null,
                 leida: false,
-                created_at: new Date().toISOString()
+                created_at: new Date().toISOString(),
+                tenant_id: tenantId
             })
             .select()
             .single();

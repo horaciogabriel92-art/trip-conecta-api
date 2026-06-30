@@ -1,11 +1,13 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { findComprobanteFile } from '../utils/fileSearch';
+import { getTenantId } from '../utils/tenant';
 
 export const getVentas = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const user = (req as any).user;
     try {
-        let query = supabase.from('ventas').select('*').eq('tenant_id', user.tenantId);
+        let query = supabase.from('ventas').select('*').eq('tenant_id', tenantId);
         
         // Si no es admin, solo ver las suyas
         if (user.role !== 'admin') {
@@ -24,6 +26,7 @@ export const getVentas = async (req: Request, res: Response) => {
 };
 
 export const getVentaById = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     const user = (req as any).user;
     
@@ -34,6 +37,7 @@ export const getVentaById = async (req: Request, res: Response) => {
         let query = supabase
             .from('ventas')
             .select('*')
+            .eq('tenant_id', tenantId)
             .eq('id', id);
         
         if (user.role !== 'admin') {
@@ -58,8 +62,8 @@ export const getVentaById = async (req: Request, res: Response) => {
         let pagos: any[] = [];
         if (venta.cotizacion_id) {
             const [{ data: comprobantes, error: compError }, { data: pagosData, error: pagosError }] = await Promise.all([
-                supabase.from('comprobantes_pago').select('*').eq('cotizacion_id', venta.cotizacion_id),
-                supabase.from('pagos_venta').select('*').eq('cotizacion_id', venta.cotizacion_id).order('fecha_pago', { ascending: false })
+                supabase.from('comprobantes_pago').select('*').eq('tenant_id', tenantId).eq('cotizacion_id', venta.cotizacion_id),
+                supabase.from('pagos_venta').select('*').eq('tenant_id', tenantId).eq('cotizacion_id', venta.cotizacion_id).order('fecha_pago', { ascending: false })
             ]);
             
             if (compError) {
@@ -105,6 +109,7 @@ export const getVentaById = async (req: Request, res: Response) => {
 };
 
 export const registrarPago = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     const { monto, medio_pago, fecha_pago, observaciones, comprobante_url } = req.body;
     const user = (req as any).user;
@@ -114,6 +119,7 @@ export const registrarPago = async (req: Request, res: Response) => {
         const { data: venta, error: ventaError } = await supabase
             .from('ventas')
             .select('id, cotizacion_id, vendedor_id, precio_total')
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .single();
 
@@ -135,6 +141,7 @@ export const registrarPago = async (req: Request, res: Response) => {
         const { data: cotizacion, error: cotError } = await supabase
             .from('cotizaciones')
             .select('id, cliente_id, precio_total, monto_pagado, monto_restante')
+            .eq('tenant_id', tenantId)
             .eq('id', venta.cotizacion_id)
             .single();
 
@@ -165,7 +172,8 @@ export const registrarPago = async (req: Request, res: Response) => {
                 observaciones: observaciones || null,
                 tipo: 'adicional',
                 comprobante_url: comprobante_url || null,
-                registrado_por: user.userId
+                registrado_por: user.userId,
+                tenant_id: tenantId
             })
             .select()
             .single();
@@ -179,6 +187,7 @@ export const registrarPago = async (req: Request, res: Response) => {
         const { data: pagosSum } = await supabase
             .from('pagos_venta')
             .select('monto')
+            .eq('tenant_id', tenantId)
             .eq('cotizacion_id', venta.cotizacion_id);
 
         let nuevoMontoPagado = (pagosSum || []).reduce((sum: number, p: any) => sum + Number(p.monto), 0);
@@ -195,6 +204,7 @@ export const registrarPago = async (req: Request, res: Response) => {
                 monto_restante: nuevoMontoRestante,
                 tipo_pago: nuevoTipoPago
             })
+            .eq('tenant_id', tenantId)
             .eq('id', venta.cotizacion_id);
 
         if (updateError) {
@@ -211,7 +221,8 @@ export const registrarPago = async (req: Request, res: Response) => {
                     venta_id: venta.id,
                     descripcion: `Pago de $${montoNum} registrado. Restante: $${nuevoMontoRestante}`,
                     realizado_por: user.userId,
-                    realizado_por_nombre: user.nombre || user.email || 'Usuario'
+                    realizado_por_nombre: user.nombre || user.email || 'Usuario',
+                    tenant_id: tenantId
                 });
             } catch (e) {
                 console.log('Error registrando historial_cliente:', e);
@@ -235,6 +246,7 @@ export const registrarPago = async (req: Request, res: Response) => {
 };
 
 export const updateEstadoVenta = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     const { estado } = req.body;
     const user = (req as any).user;
@@ -248,6 +260,7 @@ export const updateEstadoVenta = async (req: Request, res: Response) => {
         const { data: venta, error } = await supabase
             .from('ventas')
             .update({ estado })
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .select()
             .single();
@@ -261,6 +274,7 @@ export const updateEstadoVenta = async (req: Request, res: Response) => {
             const { data: cot } = await supabase
                 .from('cotizaciones')
                 .select('cliente_id')
+                .eq('tenant_id', tenantId)
                 .eq('id', venta.cotizacion_id)
                 .single();
             if (cot?.cliente_id) {
@@ -270,7 +284,8 @@ export const updateEstadoVenta = async (req: Request, res: Response) => {
                     venta_id: venta.id,
                     descripcion: `Estado de venta cambiado a ${estado}`,
                     realizado_por: user.userId,
-                    realizado_por_nombre: user.nombre || user.email || 'Usuario'
+                    realizado_por_nombre: user.nombre || user.email || 'Usuario',
+                    tenant_id: tenantId
                 });
             }
         } catch (e) {
@@ -285,6 +300,7 @@ export const updateEstadoVenta = async (req: Request, res: Response) => {
 };
 
 export const pagarComision = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     const { metodo_pago, referencia_pago, notas } = req.body || {};
     const user = (req as any).user;
@@ -299,6 +315,7 @@ export const pagarComision = async (req: Request, res: Response) => {
         const { data: venta, error: ventaError } = await supabase
             .from('ventas')
             .select('*')
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .single();
 
@@ -318,6 +335,7 @@ export const pagarComision = async (req: Request, res: Response) => {
                 fecha_pago_comision: new Date().toISOString(),
                 metodo_pago: metodo_pago || null
             })
+            .eq('tenant_id', tenantId)
             .eq('id', id);
 
         if (updateError) throw updateError;
@@ -332,7 +350,8 @@ export const pagarComision = async (req: Request, res: Response) => {
                 metodo_pago: metodo_pago || null,
                 referencia_pago: referencia_pago || null,
                 pagado_por: user.userId,
-                notas: notas || null
+                notas: notas || null,
+                tenant_id: tenantId
             });
 
         if (pagoError) throw pagoError;
@@ -345,6 +364,7 @@ export const pagarComision = async (req: Request, res: Response) => {
 };
 
 export const getEstadisticas = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const user = (req as any).user;
     
     try {
@@ -364,24 +384,24 @@ export const getEstadisticas = async (req: Request, res: Response) => {
                 supabase
                     .from('ventas')
                     .select('precio_total, comision_monto, comision_estado')
-                    .eq('tenant_id', user.tenantId)
+                    .eq('tenant_id', tenantId)
                     .eq('vendedor_id', user.userId),
                 supabase
                     .from('cotizaciones')
                     .select('estado')
-                    .eq('tenant_id', user.tenantId)
+                    .eq('tenant_id', tenantId)
                     .eq('vendedor_id', user.userId),
                 supabase
                     .from('cotizaciones')
                     .select('estado')
-                    .eq('tenant_id', user.tenantId)
+                    .eq('tenant_id', tenantId)
                     .eq('vendedor_id', user.userId)
                     .gte('fecha_creacion', inicioMes)
                     .lte('fecha_creacion', finMes),
                 supabase
                     .from('cotizaciones')
                     .select('id')
-                    .eq('tenant_id', user.tenantId)
+                    .eq('tenant_id', tenantId)
                     .eq('vendedor_id', user.userId)
                     .eq('estado', 'enviada')
             ]);
@@ -423,18 +443,22 @@ export const getEstadisticas = async (req: Request, res: Response) => {
             ] = await Promise.all([
                 supabase
                     .from('ventas')
-                    .select('precio_total, comision_monto, comision_estado'),
-                supabase
-                    .from('cotizaciones')
-                    .select('estado'),
+                    .select('precio_total, comision_monto, comision_estado')
+                    .eq('tenant_id', tenantId),
                 supabase
                     .from('cotizaciones')
                     .select('estado')
+                    .eq('tenant_id', tenantId),
+                supabase
+                    .from('cotizaciones')
+                    .select('estado')
+                    .eq('tenant_id', tenantId)
                     .gte('fecha_creacion', inicioMes)
                     .lte('fecha_creacion', finMes),
                 supabase
                     .from('cotizaciones')
                     .select('id')
+                    .eq('tenant_id', tenantId)
                     .eq('estado', 'enviada')
             ]);
 
@@ -444,6 +468,7 @@ export const getEstadisticas = async (req: Request, res: Response) => {
             const { count: cantidadVendedores } = await supabase
                 .from('users')
                 .select('*', { count: 'exact', head: true })
+                .eq('tenant_id', tenantId)
                 .eq('rol', 'vendedor')
                 .eq('activo', true);
 

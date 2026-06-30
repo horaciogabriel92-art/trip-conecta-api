@@ -1,12 +1,14 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { sendEmailAsync, getAdminEmails } from '../services/email.service';
+import { getTenantId } from '../utils/tenant';
 
 // ============================================
 // RECORDATORIOS CONTROLLER
 // ============================================
 
 export const getRecordatorios = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const user = (req as any).user;
     const { cliente_id, estado, vencidos } = req.query;
 
@@ -20,7 +22,8 @@ export const getRecordatorios = async (req: Request, res: Response) => {
                 cotizacion:cotizacion_id(id, codigo, destino_principal),
                 vendedor:vendedor_id(id, nombre, email),
                 asignado:asignado_a(id, nombre, email)
-            `);
+            `)
+            .eq('tenant_id', tenantId);
 
         // Filtros
         if (user.role !== 'admin') {
@@ -57,6 +60,7 @@ export const getRecordatorios = async (req: Request, res: Response) => {
 };
 
 export const getRecordatorioById = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     const user = (req as any).user;
 
@@ -71,6 +75,7 @@ export const getRecordatorioById = async (req: Request, res: Response) => {
                 vendedor:vendedor_id(id, nombre, email),
                 asignado:asignado_a(id, nombre, email)
             `)
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .single();
 
@@ -91,6 +96,7 @@ export const getRecordatorioById = async (req: Request, res: Response) => {
 };
 
 export const createRecordatorio = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { titulo, descripcion, cliente_id, cotizacion_id, asignado_a, fecha_recordatorio } = req.body;
     const user = (req as any).user;
 
@@ -109,7 +115,8 @@ export const createRecordatorio = async (req: Request, res: Response) => {
                 vendedor_id: user.userId,
                 asignado_a: asignado_a || user.userId,
                 fecha_recordatorio,
-                estado: 'pendiente'
+                estado: 'pendiente',
+                tenant_id: tenantId
             })
             .select()
             .single();
@@ -127,6 +134,7 @@ export const createRecordatorio = async (req: Request, res: Response) => {
 };
 
 export const updateRecordatorio = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     const { titulo, descripcion, fecha_recordatorio, estado, asignado_a } = req.body;
     const user = (req as any).user;
@@ -136,6 +144,7 @@ export const updateRecordatorio = async (req: Request, res: Response) => {
         const { data: existing, error: existingError } = await supabase
             .from('recordatorios')
             .select('vendedor_id, asignado_a')
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .single();
 
@@ -162,6 +171,7 @@ export const updateRecordatorio = async (req: Request, res: Response) => {
         const { data, error } = await supabase
             .from('recordatorios')
             .update(updateData)
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .select()
             .single();
@@ -179,6 +189,7 @@ export const updateRecordatorio = async (req: Request, res: Response) => {
 };
 
 export const deleteRecordatorio = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     const user = (req as any).user;
 
@@ -187,6 +198,7 @@ export const deleteRecordatorio = async (req: Request, res: Response) => {
         const { data: existing, error: existingError } = await supabase
             .from('recordatorios')
             .select('vendedor_id')
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .single();
 
@@ -201,6 +213,7 @@ export const deleteRecordatorio = async (req: Request, res: Response) => {
         const { error } = await supabase
             .from('recordatorios')
             .delete()
+            .eq('tenant_id', tenantId)
             .eq('id', id);
 
         if (error) {
@@ -220,6 +233,7 @@ export const deleteRecordatorio = async (req: Request, res: Response) => {
 // ============================================
 
 export const sendRecordatorioReminders = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const secret = req.headers['x-cron-secret'];
     if (secret !== process.env.CRON_SECRET) {
         return res.status(401).json({ error: 'Unauthorized' });
@@ -239,6 +253,7 @@ export const sendRecordatorioReminders = async (req: Request, res: Response) => 
                 vendedor:vendedor_id(email, nombre),
                 asignado:asignado_a(email, nombre)
             `)
+            .eq('tenant_id', tenantId)
             .eq('estado', 'pendiente')
             .eq('notificacion_enviada', false)
             .lte('fecha_recordatorio', manana.toISOString());
@@ -291,6 +306,7 @@ export const sendRecordatorioReminders = async (req: Request, res: Response) => 
                 await supabase
                     .from('recordatorios')
                     .update({ notificacion_enviada: true })
+                    .eq('tenant_id', tenantId)
                     .eq('id', rec.id);
 
                 enviados++;

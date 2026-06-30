@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { sendEmailAsync, getAdminEmails } from '../services/email.service';
 import { findComprobanteFile } from '../utils/fileSearch';
+import { getTenantId } from '../utils/tenant';
 
 export const createCotizacion = async (req: Request, res: Response) => {
     const { 
@@ -20,6 +21,7 @@ export const createCotizacion = async (req: Request, res: Response) => {
         datos_completos
     } = req.body;
     const vendedor_id = (req as any).user.userId;
+    const tenantId = getTenantId(req);
 
     console.log('[createCotizacion] Data:', req.body);
 
@@ -28,6 +30,7 @@ export const createCotizacion = async (req: Request, res: Response) => {
         const { data: paquete, error: paqueteError } = await supabase
             .from('paquetes')
             .select('*')
+            .eq('tenant_id', tenantId)
             .eq('id', paquete_id)
             .single();
 
@@ -43,6 +46,7 @@ export const createCotizacion = async (req: Request, res: Response) => {
             const { data: existenteEmail } = await supabase
                 .from('clientes')
                 .select('id')
+                .eq('tenant_id', tenantId)
                 .eq('email', cliente_email)
                 .single();
             if (existenteEmail) clienteId = existenteEmail.id;
@@ -52,6 +56,7 @@ export const createCotizacion = async (req: Request, res: Response) => {
             const { data: existenteDoc } = await supabase
                 .from('clientes')
                 .select('id')
+                .eq('tenant_id', tenantId)
                 .eq('documento', cliente_documento)
                 .single();
             if (existenteDoc) clienteId = existenteDoc.id;
@@ -67,7 +72,8 @@ export const createCotizacion = async (req: Request, res: Response) => {
                     email: cliente_email,
                     telefono: cliente_telefono,
                     documento: cliente_documento,
-                    registrado_por: vendedor_id
+                    registrado_por: vendedor_id,
+                    tenant_id: tenantId
                 })
                 .select()
                 .single();
@@ -85,7 +91,8 @@ export const createCotizacion = async (req: Request, res: Response) => {
                 es_cliente_registrado: true,
                 nombre: nuevoCliente.nombre,
                 apellido: nuevoCliente.apellido,
-                documento: cliente_documento
+                documento: cliente_documento,
+                tenant_id: tenantId
             });
         }
 
@@ -97,6 +104,7 @@ export const createCotizacion = async (req: Request, res: Response) => {
         const { data: pasajeroTitular } = await supabase
             .from('pasajeros')
             .select('*')
+            .eq('tenant_id', tenantId)
             .eq('cliente_titular_id', clienteId)
             .eq('es_cliente_registrado', true)
             .single();
@@ -119,7 +127,8 @@ export const createCotizacion = async (req: Request, res: Response) => {
                 .insert({
                     cliente_titular_id: clienteId,
                     nombre: `Acompañante ${i}`,
-                    apellido: 'Viaje'
+                    apellido: 'Viaje',
+                    tenant_id: tenantId
                 })
                 .select()
                 .single();
@@ -184,6 +193,7 @@ export const createCotizacion = async (req: Request, res: Response) => {
                 precio_total,
                 precio_moneda: 'USD',
                 comision_vendedor: paquete.comision_monto_usd || 0,
+                tenant_id: tenantId,
                 paquete_data: paqueteData,
                 itinerario: paqueteData.itinerario,
                 destino_principal: paquete.destino,
@@ -202,6 +212,7 @@ export const createCotizacion = async (req: Request, res: Response) => {
         for (const pv of pasajerosVinculados) {
             await supabase.from('cotizacion_pasajeros').insert({
                 cotizacion_id: cotizacion.id,
+                tenant_id: tenantId,
                 pasajero_id: pv.pasajero_id,
                 es_titular: pv.es_titular,
                 nombre_snapshot: pv.nombre_snapshot,
@@ -218,11 +229,12 @@ export const createCotizacion = async (req: Request, res: Response) => {
             cotizacion_id: cotizacion.id,
             descripcion: `Cotización ${codigo} creada para ${paquete.destino}`,
             realizado_por: vendedor_id,
-            realizado_por_nombre: (req as any).user.nombre || 'Vendedor'
+            realizado_por_nombre: (req as any).user.nombre || 'Vendedor',
+            tenant_id: tenantId
         });
 
         // Notificar a admins por email (fire-and-forget)
-        const adminEmails = await getAdminEmails();
+        const adminEmails = await getAdminEmails(tenantId);
         for (const adminEmail of adminEmails) {
             sendEmailAsync({
                 to: adminEmail,
@@ -248,6 +260,7 @@ export const createCotizacion = async (req: Request, res: Response) => {
 };
 
 export const getCotizaciones = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const user = (req as any).user;
     try {
         console.log('[getCotizaciones] User:', { userId: user?.userId, role: user?.role });
@@ -255,7 +268,8 @@ export const getCotizaciones = async (req: Request, res: Response) => {
         // 1. Traer cotizaciones básicas
         let query = supabase
             .from('cotizaciones')
-            .select('*');
+            .select('*')
+            .eq('tenant_id', tenantId);
         
         if (user.role !== 'admin') {
             query = query.eq('vendedor_id', user.userId);
@@ -281,6 +295,7 @@ export const getCotizaciones = async (req: Request, res: Response) => {
             const { data: clientes } = await supabase
                 .from('clientes')
                 .select('id, nombre, apellido')
+                .eq('tenant_id', tenantId)
                 .in('id', clienteIds);
             
             clientes?.forEach(c => {
@@ -294,6 +309,7 @@ export const getCotizaciones = async (req: Request, res: Response) => {
             const { data: vendedores } = await supabase
                 .from('users')
                 .select('id, nombre, apellido')
+                .eq('tenant_id', tenantId)
                 .in('id', vendedorIds);
             
             vendedores?.forEach(v => {
@@ -308,12 +324,14 @@ export const getCotizaciones = async (req: Request, res: Response) => {
                 const { count: numVuelos } = await supabase
                     .from('vuelos')
                     .select('*', { count: 'exact', head: true })
+                    .eq('tenant_id', tenantId)
                     .eq('cotizacion_id', c.id);
                 
                 // Contar hospedajes
                 const { count: numHospedajes } = await supabase
                     .from('hospedajes')
                     .select('*', { count: 'exact', head: true })
+                    .eq('tenant_id', tenantId)
                     .eq('cotizacion_id', c.id);
                 
                 // Determinar tipo y nombres
@@ -354,6 +372,7 @@ export const getCotizaciones = async (req: Request, res: Response) => {
 };
 
 export const getCotizacionById = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     const user = (req as any).user;
     
@@ -365,6 +384,7 @@ export const getCotizacionById = async (req: Request, res: Response) => {
         let basicQuery = supabase
             .from('cotizaciones')
             .select('id, vendedor_id, estado')
+            .eq('tenant_id', tenantId)
             .eq('id', id);
         
         if (user.role !== 'admin') {
@@ -386,6 +406,7 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                 *,
                 cliente:cliente_id (*)
             `)
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .single();
         
@@ -395,6 +416,7 @@ export const getCotizacionById = async (req: Request, res: Response) => {
             const { data: cotizacionSinCliente } = await supabase
                 .from('cotizaciones')
                 .select('*')
+                .eq('tenant_id', tenantId)
                 .eq('id', id)
                 .single();
             
@@ -433,6 +455,7 @@ export const getCotizacionById = async (req: Request, res: Response) => {
             const { data: p } = await supabase
                 .from('cotizacion_pasajeros')
                 .select('*, pasajero:pasajero_id (*)')
+                .eq('tenant_id', tenantId)
                 .eq('cotizacion_id', id);
             pasajeros = p || [];
         } catch (e) { console.log('Error cargando pasajeros:', e); }
@@ -442,6 +465,7 @@ export const getCotizacionById = async (req: Request, res: Response) => {
             const { data: v } = await supabase
                 .from('vuelos')
                 .select('*')
+                .eq('tenant_id', tenantId)
                 .eq('cotizacion_id', id);
             vuelos = v || [];
         } catch (e) { console.log('Error cargando vuelos:', e); }
@@ -451,6 +475,7 @@ export const getCotizacionById = async (req: Request, res: Response) => {
             const { data: h } = await supabase
                 .from('hospedajes')
                 .select('*')
+                .eq('tenant_id', tenantId)
                 .eq('cotizacion_id', id);
             hospedajes = h || [];
         } catch (e) { console.log('Error cargando hospedajes:', e); }
@@ -461,6 +486,7 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                 const { data: p } = await supabase
                     .from('paquetes')
                     .select('*')
+                    .eq('tenant_id', tenantId)
                     .eq('id', cotizacion.paquete_id)
                     .single();
                 paquete = p;
@@ -483,6 +509,7 @@ export const getCotizacionById = async (req: Request, res: Response) => {
             const { data: v } = await supabase
                 .from('ventas')
                 .select('*')
+                .eq('tenant_id', tenantId)
                 .eq('cotizacion_id', id)
                 .maybeSingle();  // Usar maybeSingle para no fallar si no existe
             venta = v;
@@ -497,6 +524,7 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                     const { data: pagosData } = await supabase
                         .from('pagos_venta')
                         .select('*')
+                        .eq('tenant_id', tenantId)
                         .eq('cotizacion_id', id)
                         .order('fecha_pago', { ascending: false });
                     pagos = pagosData || [];
@@ -534,6 +562,7 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                     const { data: comps } = await supabase
                         .from('comprobantes_pago')
                         .select('*')
+                        .eq('tenant_id', tenantId)
                         .eq('venta_id', venta.id);
                     if (comps && comps.length > 0) {
                         // Merge comprobantes de la tabla con los de JSON
@@ -612,6 +641,7 @@ export const getCotizacionById = async (req: Request, res: Response) => {
 };
 
 export const convertirAVenta = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     const { 
         pago_realizado, 
@@ -634,6 +664,7 @@ export const convertirAVenta = async (req: Request, res: Response) => {
         const { data: cotizacion, error: cotError } = await supabase
             .from('cotizaciones')
             .select('*')
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .single();
 
@@ -658,6 +689,7 @@ export const convertirAVenta = async (req: Request, res: Response) => {
         const { data: ventaExistente, error: ventaCheckError } = await supabase
             .from('ventas')
             .select('id, codigo')
+            .eq('tenant_id', tenantId)
             .eq('cotizacion_id', id)
             .maybeSingle();
         
@@ -678,6 +710,7 @@ export const convertirAVenta = async (req: Request, res: Response) => {
             const { data: cliente } = await supabase
                 .from('clientes')
                 .select('nombre, apellido, email, telefono')
+                .eq('tenant_id', tenantId)
                 .eq('id', cotizacion.cliente_id)
                 .single();
             
@@ -695,6 +728,7 @@ export const convertirAVenta = async (req: Request, res: Response) => {
             const { data: paqueteData, error: paqueteError } = await supabase
                 .from('paquetes')
                 .select('titulo, cupos_disponibles, cupos_totales')
+                .eq('tenant_id', tenantId)
                 .eq('id', cotizacion.paquete_id)
                 .single();
 
@@ -717,6 +751,7 @@ export const convertirAVenta = async (req: Request, res: Response) => {
         const { data: comprobantes } = await supabase
             .from('comprobantes_pago')
             .select('*')
+            .eq('tenant_id', tenantId)
             .eq('cotizacion_id', id);
 
         // Generar código de venta
@@ -782,6 +817,7 @@ export const convertirAVenta = async (req: Request, res: Response) => {
                 fecha_salida: cotizacion.fecha_salida,
                 num_pasajeros: cotizacion.num_pasajeros,
                 precio_total: cotizacion.precio_total,
+                tenant_id: tenantId,
                 comision_porcentaje: 0,
                 comision_monto: cotizacion.comision_vendedor || 0,
                 estado: 'pendiente',  // Inicialmente pendiente hasta que admin suba vouchers
@@ -851,6 +887,7 @@ export const convertirAVenta = async (req: Request, res: Response) => {
         const { error: updateError } = await supabase
             .from('cotizaciones')
             .update(updateData)
+            .eq('tenant_id', tenantId)
             .eq('id', id);
         
         if (updateError) {
@@ -862,6 +899,7 @@ export const convertirAVenta = async (req: Request, res: Response) => {
                     estado: 'pendiente_sync',
                     notas: (venta.notas || '') + '\n\n[ERROR] La cotización no se pudo marcar como vendida. ID de cotización: ' + id
                 })
+                .eq('tenant_id', tenantId)
                 .eq('id', venta.id);
                 
             return res.status(500).json({ 
@@ -883,7 +921,8 @@ export const convertirAVenta = async (req: Request, res: Response) => {
                 fecha_pago: new Date().toISOString().split('T')[0],
                 observaciones: observaciones_pago || null,
                 tipo: 'inicial',
-                registrado_por: user.userId
+                registrado_por: user.userId,
+                tenant_id: tenantId
             });
         }
 
@@ -894,11 +933,12 @@ export const convertirAVenta = async (req: Request, res: Response) => {
             await supabase
                 .from('paquetes')
                 .update({ cupos_disponibles: nuevosCupos })
+                .eq('tenant_id', tenantId)
                 .eq('id', cotizacion.paquete_id);
         }
 
         // Notificar a admins y vendedor por email (fire-and-forget)
-        const adminEmailsVenta = await getAdminEmails();
+        const adminEmailsVenta = await getAdminEmails(tenantId);
         for (const adminEmail of adminEmailsVenta) {
             sendEmailAsync({
                 to: adminEmail,
@@ -974,6 +1014,7 @@ export const convertirAVenta = async (req: Request, res: Response) => {
 };
 
 export const updateCotizacionManual = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     const {
         nombre_cotizacion,
@@ -996,6 +1037,7 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
         const { data: cotizacionExistente, error: cotError } = await supabase
             .from('cotizaciones')
             .select('*')
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .single();
 
@@ -1026,18 +1068,18 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
 
         // Si cambió el cliente, actualizar
         if (cliente_id && cliente_id !== cotizacionExistente.cliente_id) {
-            const { data: clienteExistente } = await supabase.from('clientes').select('*').eq('id', cliente_id).single();
+            const { data: clienteExistente } = await supabase.from('clientes').select('*').eq('tenant_id', tenantId).eq('id', cliente_id).single();
             if (clienteExistente) {
                 clienteFinalId = cliente_id;
             }
         }
 
         // Obtener datos del cliente
-        const { data: clienteData } = await supabase.from('clientes').select('*').eq('id', clienteFinalId).single();
+        const { data: clienteData } = await supabase.from('clientes').select('*').eq('tenant_id', tenantId).eq('id', clienteFinalId).single();
 
         // Procesar pasajeros existentes
         if (pasajeros_ids && pasajeros_ids.length > 0) {
-            const { data: pasajerosExistentes } = await supabase.from('pasajeros').select('*').in('id', pasajeros_ids);
+            const { data: pasajerosExistentes } = await supabase.from('pasajeros').select('*').eq('tenant_id', tenantId).in('id', pasajeros_ids);
             if (pasajerosExistentes) {
                 for (const p of pasajerosExistentes) {
                     pasajerosVinculados.push({
@@ -1055,6 +1097,7 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
         const { data: pasajeroTitular } = await supabase
             .from('pasajeros')
             .select('*')
+            .eq('tenant_id', tenantId)
             .eq('cliente_titular_id', clienteFinalId)
             .eq('es_cliente_registrado', true)
             .single();
@@ -1085,7 +1128,8 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
                         apellido: p.apellido,
                         fecha_nacimiento: p.fecha_nacimiento,
                         nacionalidad: p.nacionalidad || 'Uruguay',
-                        es_cliente_registrado: false
+                        es_cliente_registrado: false,
+                        tenant_id: tenantId
                     })
                     .select()
                     .single();
@@ -1106,7 +1150,7 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
         }
 
         // 5. Sincronizar vuelos: eliminar existentes + insertar nuevos
-        await supabase.from('vuelos').delete().eq('cotizacion_id', id);
+        await supabase.from('vuelos').delete().eq('tenant_id', tenantId).eq('cotizacion_id', id);
 
         if (vuelos && vuelos.length > 0) {
             const vuelosInsert = vuelos.map((v: any, index: number) => ({
@@ -1133,12 +1177,12 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
                 datos_completos: v
             }));
 
-            const { error: vuelosError } = await supabase.from('vuelos').insert(vuelosInsert);
+            const { error: vuelosError } = await supabase.from('vuelos').insert(vuelosInsert.map((v: any) => ({ ...v, tenant_id: tenantId })));
             if (vuelosError) console.error('Error updating vuelos:', vuelosError);
         }
 
         // 6. Sincronizar hospedajes: eliminar existentes + insertar nuevos
-        await supabase.from('hospedajes').delete().eq('cotizacion_id', id);
+        await supabase.from('hospedajes').delete().eq('tenant_id', tenantId).eq('cotizacion_id', id);
 
         if (hospedajes && hospedajes.length > 0) {
             const hospedajesInsert = hospedajes.map((h: any) => ({
@@ -1159,12 +1203,12 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
                 notas: h.notas
             }));
 
-            const { error: hospedajesError } = await supabase.from('hospedajes').insert(hospedajesInsert);
+            const { error: hospedajesError } = await supabase.from('hospedajes').insert(hospedajesInsert.map((h: any) => ({ ...h, tenant_id: tenantId })));
             if (hospedajesError) console.error('Error updating hospedajes:', hospedajesError);
         }
 
         // 7. Sincronizar pasajeros: eliminar existentes + insertar nuevos
-        await supabase.from('cotizacion_pasajeros').delete().eq('cotizacion_id', id);
+        await supabase.from('cotizacion_pasajeros').delete().eq('tenant_id', tenantId).eq('cotizacion_id', id);
 
         if (pasajerosVinculados.length > 0) {
             const pasajerosInsert = pasajerosVinculados.map((p: any) => ({
@@ -1176,7 +1220,7 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
                 documento_snapshot: p.documento_snapshot
             }));
 
-            const { error: cpError } = await supabase.from('cotizacion_pasajeros').insert(pasajerosInsert);
+            const { error: cpError } = await supabase.from('cotizacion_pasajeros').insert(pasajerosInsert.map((p: any) => ({ ...p, tenant_id: tenantId })));
             if (cpError) console.error('Error updating cotizacion_pasajeros:', cpError);
         }
 
@@ -1214,6 +1258,7 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
                 notas: `Cotización manual editada. Destino: ${destinoFinal}`,
                 fecha_actualizacion: new Date().toISOString()
             })
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .select()
             .single();
@@ -1224,7 +1269,7 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
         }
 
         // 10. Actualizar fecha_ultima_interaccion del cliente
-        await supabase.from('clientes').update({ fecha_ultima_interaccion: new Date().toISOString() }).eq('id', clienteFinalId);
+        await supabase.from('clientes').update({ fecha_ultima_interaccion: new Date().toISOString() }).eq('tenant_id', tenantId).eq('id', clienteFinalId);
 
         // 11. Registrar en historial
         await supabase.from('historial_cliente').insert({
@@ -1233,7 +1278,8 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
             cotizacion_id: id,
             descripcion: `Cotización ${cotizacion.codigo} editada`,
             realizado_por: user.userId,
-            realizado_por_nombre: user.nombre || user.email || 'Usuario'
+            realizado_por_nombre: user.nombre || user.email || 'Usuario',
+            tenant_id: tenantId
         });
 
         res.json({
@@ -1251,6 +1297,7 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
 };
 
 export const updateCotizacion = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     const data = req.body;
     const user = (req as any).user;
@@ -1265,6 +1312,7 @@ export const updateCotizacion = async (req: Request, res: Response) => {
             const { data: cot, error: permError } = await supabase
                 .from('cotizaciones')
                 .select('vendedor_id')
+                .eq('tenant_id', tenantId)
                 .eq('id', id)
                 .single();
             
@@ -1278,6 +1326,7 @@ export const updateCotizacion = async (req: Request, res: Response) => {
         const { data: cotizacion, error } = await supabase
             .from('cotizaciones')
             .update(data)
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .select()
             .single();
@@ -1297,6 +1346,7 @@ export const updateCotizacion = async (req: Request, res: Response) => {
 
 // Nuevos endpoints para admin
 export const aprobarCotizacion = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     const { notas_admin } = req.body;
     const user = (req as any).user;
@@ -1314,6 +1364,7 @@ export const aprobarCotizacion = async (req: Request, res: Response) => {
                 notas_admin: notas_admin || null,
                 fecha_aprobacion: new Date().toISOString()
             })
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .select()
             .single();
@@ -1330,6 +1381,7 @@ export const aprobarCotizacion = async (req: Request, res: Response) => {
 };
 
 export const rechazarCotizacion = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     const { notas_admin } = req.body;
     const user = (req as any).user;
@@ -1351,6 +1403,7 @@ export const rechazarCotizacion = async (req: Request, res: Response) => {
                 notas_admin: notas_admin,
                 fecha_rechazo: new Date().toISOString()
             })
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .select()
             .single();
@@ -1398,6 +1451,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
         } = req.body;
 
         const user = (req as any).user;
+        const tenantId = getTenantId(req);
         const vendedor_id = (user.role === 'admin' && vendedor_id_body) 
             ? vendedor_id_body 
             : user.userId;
@@ -1420,6 +1474,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
             const { data: clienteExistente, error: clienteError } = await supabase
                 .from('clientes')
                 .select('*')
+                .eq('tenant_id', tenantId)
                 .eq('id', cliente_id)
                 .single();
             
@@ -1443,7 +1498,8 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                     telefono_alt: cliente_nuevo.telefono_alt,
                     fecha_nacimiento: cliente_nuevo.fecha_nacimiento,
                     nacionalidad: cliente_nuevo.nacionalidad || 'Uruguay',
-                    registrado_por: vendedor_id
+                    registrado_por: vendedor_id,
+                    tenant_id: tenantId
                 })
                 .select()
                 .single();
@@ -1468,7 +1524,8 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                     fecha_nacimiento: cliente_nuevo.fecha_nacimiento,
                     nacionalidad: cliente_nuevo.nacionalidad || 'Uruguay',
                     es_cliente_registrado: true,
-                    cliente_id: nuevoCliente.id
+                    cliente_id: nuevoCliente.id,
+                    tenant_id: tenantId
                 })
                 .select()
                 .single();
@@ -1495,6 +1552,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
             const { data: pasajerosExistentes, error: pasajerosError } = await supabase
                 .from('pasajeros')
                 .select('*')
+                .eq('tenant_id', tenantId)
                 .in('id', pasajeros_ids);
             
             if (pasajerosError) {
@@ -1517,6 +1575,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
         let { data: pasajeroTitular } = await supabase
             .from('pasajeros')
             .select('*')
+            .eq('tenant_id', tenantId)
             .eq('cliente_titular_id', clienteFinalId)
             .eq('es_cliente_registrado', true)
             .single();
@@ -1535,7 +1594,8 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                     fecha_nacimiento: clienteData.fecha_nacimiento,
                     nacionalidad: clienteData.nacionalidad || 'Uruguay',
                     es_cliente_registrado: true,
-                    notas: 'Creado automáticamente al generar cotización'
+                    notas: 'Creado automáticamente al generar cotización',
+                    tenant_id: tenantId
                 })
                 .select()
                 .single();
@@ -1575,7 +1635,8 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                         apellido: p.apellido,
                         fecha_nacimiento: p.fecha_nacimiento,
                         nacionalidad: p.nacionalidad || 'Uruguay',
-                        es_cliente_registrado: false
+                        es_cliente_registrado: false,
+                        tenant_id: tenantId
                     })
                     .select()
                     .single();
@@ -1611,6 +1672,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
             const { data: paquete } = await supabase
                 .from('paquetes')
                 .select('*')
+                .eq('tenant_id', tenantId)
                 .eq('id', paquete_id)
                 .single();
             
@@ -1727,7 +1789,8 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                     ? `Cotización desde paquete: ${paqueteData?.titulo || ''}. Destino: ${destino_principal}`
                     : `Cotización manual creada desde cero. Destino: ${destino_principal}`,
                 destino_principal,
-                num_pasajeros: pasajerosVinculados.length
+                num_pasajeros: pasajerosVinculados.length,
+                tenant_id: tenantId
             })
             .select()
             .single();
@@ -1770,7 +1833,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
 
             const { error: vuelosError } = await supabase
                 .from('vuelos')
-                .insert(vuelosInsert);
+                .insert(vuelosInsert.map((v: any) => ({ ...v, tenant_id: tenantId })));
 
             if (vuelosError) {
                 console.error('Error creating vuelos:', vuelosError);
@@ -1799,7 +1862,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
 
             const { error: hospedajesError } = await supabase
                 .from('hospedajes')
-                .insert(hospedajesInsert);
+                .insert(hospedajesInsert.map((h: any) => ({ ...h, tenant_id: tenantId })));
 
             if (hospedajesError) {
                 console.error('Error creating hospedajes:', hospedajesError);
@@ -1819,7 +1882,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
 
             const { error: cpError } = await supabase
                 .from('cotizacion_pasajeros')
-                .insert(pasajerosInsert);
+                .insert(pasajerosInsert.map((p: any) => ({ ...p, tenant_id: tenantId })));
 
             if (cpError) {
                 console.error('Error creating cotizacion_pasajeros:', cpError);
@@ -1835,17 +1898,19 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                 cotizacion_id: cotizacion.id,
                 descripcion: `Cotización ${codigo} creada para ${destino_principal || 'destino personalizado'}`,
                 realizado_por: vendedor_id,
-                realizado_por_nombre: user.nombre || user.email || 'Usuario'
+                realizado_por_nombre: user.nombre || user.email || 'Usuario',
+                tenant_id: tenantId
             });
 
         // Actualizar fecha_ultima_interaccion del cliente
         await supabase
             .from('clientes')
             .update({ fecha_ultima_interaccion: new Date().toISOString() })
+            .eq('tenant_id', tenantId)
             .eq('id', clienteFinalId);
 
         // Notificar a admins por email (fire-and-forget)
-        const adminEmailsManual = await getAdminEmails();
+        const adminEmailsManual = await getAdminEmails(tenantId);
         for (const adminEmail of adminEmailsManual) {
             sendEmailAsync({
                 to: adminEmail,
@@ -1879,6 +1944,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
 };
 
 export const deleteCotizacion = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     const vendedor_id = (req as any).user.userId;
     const userRole = (req as any).user.role;
@@ -1888,6 +1954,7 @@ export const deleteCotizacion = async (req: Request, res: Response) => {
         const { data: cotizacion, error: findError } = await supabase
             .from('cotizaciones')
             .select('id, vendedor_id, estado')
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .single();
 
@@ -1912,6 +1979,7 @@ export const deleteCotizacion = async (req: Request, res: Response) => {
         const { error: deleteError } = await supabase
             .from('cotizaciones')
             .delete()
+            .eq('tenant_id', tenantId)
             .eq('id', id);
 
         if (deleteError) {
@@ -1935,6 +2003,7 @@ export const deleteCotizacion = async (req: Request, res: Response) => {
 // ============================================
 
 export const enviarCotizacion = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     const user = (req as any).user;
     
@@ -1946,6 +2015,7 @@ export const enviarCotizacion = async (req: Request, res: Response) => {
         const { data: cotizacionExistente, error: findError } = await supabase
             .from('cotizaciones')
             .select('id, vendedor_id, estado, codigo')
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .single();
         
@@ -1966,6 +2036,7 @@ export const enviarCotizacion = async (req: Request, res: Response) => {
             .update({ 
                 estado: 'enviada'
             })
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .select()
             .single();

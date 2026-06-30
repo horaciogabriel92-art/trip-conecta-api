@@ -1,8 +1,10 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { sendEmailAsync, sendRecordatorioCotizacionVencer, sendRecordatorioSeguimiento } from '../services/email.service';
+import { getTenantId } from '../utils/tenant';
 
 export const sendPaymentReminders = async (req: Request, res: Response) => {
+  const tenantId = getTenantId(req);
   const authHeader = req.headers['x-cron-secret'];
   const expectedSecret = process.env.CRON_SECRET;
 
@@ -27,6 +29,7 @@ export const sendPaymentReminders = async (req: Request, res: Response) => {
         vendedor_id,
         users:vendedor_id (email, nombre)
       `)
+      .eq('tenant_id', tenantId)
       .eq('estado', 'vendida')
       .eq('tipo_pago', 'parcial')
       .lte('fecha_pago_resto', hoy)
@@ -68,6 +71,7 @@ export const sendPaymentReminders = async (req: Request, res: Response) => {
         await supabase
           .from('cotizaciones')
           .update({ ultimo_recordatorio_enviado: hoy })
+          .eq('tenant_id', tenantId)
           .eq('id', c.id);
 
         enviados++;
@@ -91,6 +95,7 @@ export const sendPaymentReminders = async (req: Request, res: Response) => {
 
 
 export const sendCotizacionVencimientoReminders = async (req: Request, res: Response) => {
+  const tenantId = getTenantId(req);
   const authHeader = req.headers['x-cron-secret'];
   const expectedSecret = process.env.CRON_SECRET;
 
@@ -116,6 +121,7 @@ export const sendCotizacionVencimientoReminders = async (req: Request, res: Resp
         cliente:cliente_id (nombre, apellido),
         users:vendedor_id (email, nombre)
       `)
+      .eq('tenant_id', tenantId)
       .eq('estado', 'nueva')
       .lte('fecha_expiracion', limiteStr)
       .gte('fecha_expiracion', hoyStr)
@@ -151,7 +157,7 @@ export const sendCotizacionVencimientoReminders = async (req: Request, res: Resp
           `${process.env.PANEL_URL || 'https://panel.tripconecta.com'}/cotizaciones/${c.id}`
         );
 
-        await supabase.from('cotizaciones').update({ ultimo_recordatorio_enviado: hoyStr }).eq('id', c.id);
+        await supabase.from('cotizaciones').update({ ultimo_recordatorio_enviado: hoyStr }).eq('tenant_id', tenantId).eq('id', c.id);
         enviados++;
       } catch (err) {
         console.error(`[Jobs] Error enviando recordatorio de vencimiento para ${c.codigo}:`, err);
@@ -167,6 +173,7 @@ export const sendCotizacionVencimientoReminders = async (req: Request, res: Resp
 };
 
 export const sendSeguimientoReminders = async (req: Request, res: Response) => {
+  const tenantId = getTenantId(req);
   const authHeader = req.headers['x-cron-secret'];
   const expectedSecret = process.env.CRON_SECRET;
 
@@ -192,6 +199,7 @@ export const sendSeguimientoReminders = async (req: Request, res: Response) => {
         cliente:cliente_id (nombre, apellido),
         users:vendedor_id (email, nombre)
       `)
+      .eq('tenant_id', tenantId)
       .eq('estado', 'enviada')
       .lte('fecha_envio', limiteStr)
       .or(`ultimo_recordatorio_enviado.is.null,ultimo_recordatorio_enviado.lt.${hoyStr}`);
@@ -226,7 +234,7 @@ export const sendSeguimientoReminders = async (req: Request, res: Response) => {
           `${process.env.PANEL_URL || 'https://panel.tripconecta.com'}/cotizaciones/${c.id}`
         );
 
-        await supabase.from('cotizaciones').update({ ultimo_recordatorio_enviado: hoyStr }).eq('id', c.id);
+        await supabase.from('cotizaciones').update({ ultimo_recordatorio_enviado: hoyStr }).eq('tenant_id', tenantId).eq('id', c.id);
         enviados++;
       } catch (err) {
         console.error(`[Jobs] Error enviando recordatorio de seguimiento para ${c.codigo}:`, err);

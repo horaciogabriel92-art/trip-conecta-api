@@ -5,6 +5,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { findComprobanteFile } from '../utils/fileSearch';
+import { getTenantId } from '../utils/tenant';
 
 const router = Router();
 console.log('[UPLOAD ROUTES] Loading upload routes...');
@@ -63,6 +64,7 @@ const uploadComprobante = multer({
 
 // Subir imagen a Supabase Storage
 router.post('/paquete-imagen', authenticateToken, upload.single('imagen'), async (req, res) => {
+  const tenantId = getTenantId(req);
   try {
     console.log('Upload request received:', {
       headers: req.headers['content-type'],
@@ -111,6 +113,7 @@ router.post('/paquete-imagen', authenticateToken, upload.single('imagen'), async
 
 // Eliminar imagen de Supabase Storage
 router.delete('/paquete-imagen', authenticateToken, async (req, res) => {
+  const tenantId = getTenantId(req);
   try {
     const { path } = req.body;
     
@@ -141,6 +144,7 @@ router.delete('/paquete-imagen', authenticateToken, async (req, res) => {
 
 // Subir comprobante de pago para una cotización
 router.post('/comprobante-pago/:cotizacionId', authenticateToken, uploadComprobante.single('comprobante'), async (req, res) => {
+  const tenantId = getTenantId(req);
   try {
     const { cotizacionId } = req.params;
     const userId = (req as any).user.userId;
@@ -154,6 +158,7 @@ router.post('/comprobante-pago/:cotizacionId', authenticateToken, uploadComproba
     const { data: cotizacion, error: cotError } = await supabase
       .from('cotizaciones')
       .select('id, vendedor_id, codigo')
+      .eq('tenant_id', tenantId)
       .eq('id', cotizacionId)
       .single();
 
@@ -183,7 +188,8 @@ router.post('/comprobante-pago/:cotizacionId', authenticateToken, uploadComproba
         ruta_archivo: req.file.filename,
         tipo_archivo: tipoArchivo,
         tamaño_bytes: req.file.size,
-        descripcion: descripcion || null
+        descripcion: descripcion || null,
+        tenant_id: tenantId
       })
       .select()
       .single();
@@ -222,6 +228,7 @@ router.post('/comprobante-pago/:cotizacionId', authenticateToken, uploadComproba
 
 // Obtener comprobantes de pago de una cotización
 router.get('/comprobantes-pago/:cotizacionId', authenticateToken, async (req, res) => {
+  const tenantId = getTenantId(req);
   try {
     const { cotizacionId } = req.params;
     const userId = (req as any).user.userId;
@@ -231,6 +238,7 @@ router.get('/comprobantes-pago/:cotizacionId', authenticateToken, async (req, re
     const { data: cotizacion, error: cotError } = await supabase
       .from('cotizaciones')
       .select('id, vendedor_id')
+      .eq('tenant_id', tenantId)
       .eq('id', cotizacionId)
       .single();
 
@@ -247,6 +255,7 @@ router.get('/comprobantes-pago/:cotizacionId', authenticateToken, async (req, re
     const { data: comprobantes, error } = await supabase
       .from('comprobantes_pago')
       .select('*')
+      .eq('tenant_id', tenantId)
       .eq('cotizacion_id', cotizacionId)
       .order('fecha_subida', { ascending: false });
 
@@ -271,6 +280,7 @@ router.get('/comprobantes-pago/:cotizacionId', authenticateToken, async (req, re
 
 // Descargar comprobante de pago
 router.get('/comprobante-pago/:id/download', authenticateToken, async (req, res) => {
+  const tenantId = getTenantId(req);
   try {
     const { id } = req.params;
     const userId = (req as any).user.userId;
@@ -280,6 +290,7 @@ router.get('/comprobante-pago/:id/download', authenticateToken, async (req, res)
     const { data: comprobante, error } = await supabase
       .from('comprobantes_pago')
       .select('*, cotizaciones!inner(vendedor_id)')
+      .eq('tenant_id', tenantId)
       .eq('id', id)
       .single();
 
@@ -320,6 +331,7 @@ router.get('/comprobante-pago/:id/download', authenticateToken, async (req, res)
 
 // Descargar comprobante por nombre de archivo (para comprobantes legacy del JSON)
 router.get('/comprobante-pago/download-by-filename/:filename', authenticateToken, async (req, res) => {
+  const tenantId = getTenantId(req);
   try {
     // El parámetro puede ser string o string[], asegurarnos de usar string
     const filenameParam = req.params.filename;
@@ -373,6 +385,7 @@ router.get('/comprobante-pago/download-by-filename/:filename', authenticateToken
 
 // Eliminar comprobante de pago
 router.delete('/comprobante-pago/:id', authenticateToken, async (req, res) => {
+  const tenantId = getTenantId(req);
   try {
     const { id } = req.params;
     const userId = (req as any).user.userId;
@@ -382,6 +395,7 @@ router.delete('/comprobante-pago/:id', authenticateToken, async (req, res) => {
     const { data: comprobante, error } = await supabase
       .from('comprobantes_pago')
       .select('*')
+      .eq('tenant_id', tenantId)
       .eq('id', id)
       .single();
 
@@ -406,6 +420,7 @@ router.delete('/comprobante-pago/:id', authenticateToken, async (req, res) => {
     const { error: deleteError } = await supabase
       .from('comprobantes_pago')
       .delete()
+      .eq('tenant_id', tenantId)
       .eq('id', id);
 
     if (deleteError) {
@@ -423,6 +438,7 @@ router.delete('/comprobante-pago/:id', authenticateToken, async (req, res) => {
 
 // Obtener comprobantes de pago de una VENTA (para admin)
 router.get('/comprobantes-venta/:ventaId', authenticateToken, async (req, res) => {
+  const tenantId = getTenantId(req);
   try {
     const { ventaId } = req.params;
     const userId = (req as any).user.userId;
@@ -432,6 +448,7 @@ router.get('/comprobantes-venta/:ventaId', authenticateToken, async (req, res) =
     const { data: venta, error: ventaError } = await supabase
       .from('ventas')
       .select('id, vendedor_id, cotizacion_id')
+      .eq('tenant_id', tenantId)
       .eq('id', ventaId)
       .single();
 
@@ -448,6 +465,7 @@ router.get('/comprobantes-venta/:ventaId', authenticateToken, async (req, res) =
     const { data: comprobantes, error } = await supabase
       .from('comprobantes_pago')
       .select('*')
+      .eq('tenant_id', tenantId)
       .eq('cotizacion_id', venta.cotizacion_id)
       .order('fecha_subida', { ascending: false });
 
@@ -472,6 +490,7 @@ router.get('/comprobantes-venta/:ventaId', authenticateToken, async (req, res) =
 
 // DEBUG: Endpoint para diagnosticar archivos de comprobantes (público temporalmente)
 router.get('/debug/comprobantes-files', async (req, res) => {
+  const tenantId = getTenantId(req);
   try {
 
     const results: any = {
@@ -566,6 +585,7 @@ const uploadVoucher = multer({
 
 // POST /api/upload/voucher/:ventaId - Subir voucher (admin only)
 router.post('/voucher/:ventaId', authenticateToken, uploadVoucher.single('voucher'), async (req, res) => {
+  const tenantId = getTenantId(req);
   try {
     const { ventaId } = req.params;
     const userId = (req as any).user.userId;
@@ -588,6 +608,7 @@ router.post('/voucher/:ventaId', authenticateToken, uploadVoucher.single('vouche
     const { data: venta, error: ventaError } = await supabase
       .from('ventas')
       .select('id, cotizacion_id')
+      .eq('tenant_id', tenantId)
       .eq('id', ventaId)
       .single();
     
@@ -605,7 +626,8 @@ router.post('/voucher/:ventaId', authenticateToken, uploadVoucher.single('vouche
         nombre_archivo: req.file.originalname,
         ruta_archivo: req.file.filename,
         descripcion: descripcion || null,
-        subido_por: userId
+        subido_por: userId,
+        tenant_id: tenantId
       })
       .select()
       .single();
@@ -622,18 +644,21 @@ router.post('/voucher/:ventaId', authenticateToken, uploadVoucher.single('vouche
       await supabase
         .from('ventas')
         .update({ comision_monto: comisionNum })
+        .eq('tenant_id', tenantId)
         .eq('id', ventaId);
       
       if (venta.cotizacion_id) {
         await supabase
           .from('cotizaciones')
           .update({ comision_vendedor: comisionNum })
+          .eq('tenant_id', tenantId)
           .eq('id', venta.cotizacion_id);
         
         // Obtener cliente_id para historial
         const { data: cotData } = await supabase
           .from('cotizaciones')
           .select('cliente_id')
+          .eq('tenant_id', tenantId)
           .eq('id', venta.cotizacion_id)
           .single();
         
@@ -647,7 +672,8 @@ router.post('/voucher/:ventaId', authenticateToken, uploadVoucher.single('vouche
               descripcion: `Comisión de $${comisionNum} asignada al subir voucher`,
               venta_id: ventaId,
               cotizacion_id: venta.cotizacion_id,
-              realizado_por: userId
+              realizado_por: userId,
+              tenant_id: tenantId
             });
         }
       }
@@ -657,6 +683,7 @@ router.post('/voucher/:ventaId', authenticateToken, uploadVoucher.single('vouche
     await supabase
       .from('ventas')
       .update({ estado: 'emitida' })
+      .eq('tenant_id', tenantId)
       .eq('id', ventaId);
     
     res.json({
@@ -680,6 +707,7 @@ router.post('/voucher/:ventaId', authenticateToken, uploadVoucher.single('vouche
 
 // GET /api/upload/vouchers/:ventaId - Listar vouchers
 router.get('/vouchers/:ventaId', authenticateToken, async (req, res) => {
+  const tenantId = getTenantId(req);
   try {
     const { ventaId } = req.params;
     const userId = (req as any).user.userId;
@@ -689,6 +717,7 @@ router.get('/vouchers/:ventaId', authenticateToken, async (req, res) => {
     const { data: venta, error: ventaError } = await supabase
       .from('ventas')
       .select('id, vendedor_id')
+      .eq('tenant_id', tenantId)
       .eq('id', ventaId)
       .single();
     
@@ -705,6 +734,7 @@ router.get('/vouchers/:ventaId', authenticateToken, async (req, res) => {
     const { data: vouchers, error } = await supabase
       .from('documentos_viaje')
       .select('*')
+      .eq('tenant_id', tenantId)
       .eq('venta_id', ventaId)
       .order('fecha_subida', { ascending: false });
     
@@ -729,6 +759,7 @@ router.get('/vouchers/:ventaId', authenticateToken, async (req, res) => {
 
 // GET /api/upload/voucher/:id/download - Descargar voucher
 router.get('/voucher/:id/download', authenticateToken, async (req, res) => {
+  const tenantId = getTenantId(req);
   try {
     const { id } = req.params;
     const userId = (req as any).user.userId;
@@ -738,6 +769,7 @@ router.get('/voucher/:id/download', authenticateToken, async (req, res) => {
     const { data: voucher, error } = await supabase
       .from('documentos_viaje')
       .select('*, ventas!inner(vendedor_id)')
+      .eq('tenant_id', tenantId)
       .eq('id', id)
       .single();
     
@@ -777,6 +809,7 @@ router.get('/voucher/:id/download', authenticateToken, async (req, res) => {
 
 // DELETE /api/upload/voucher/:id - Eliminar voucher (admin only)
 router.delete('/voucher/:id', authenticateToken, async (req, res) => {
+  const tenantId = getTenantId(req);
   try {
     const { id } = req.params;
     const userRole = (req as any).user.role;
@@ -790,6 +823,7 @@ router.delete('/voucher/:id', authenticateToken, async (req, res) => {
     const { data: voucher, error } = await supabase
       .from('documentos_viaje')
       .select('*')
+      .eq('tenant_id', tenantId)
       .eq('id', id)
       .single();
     
@@ -809,6 +843,7 @@ router.delete('/voucher/:id', authenticateToken, async (req, res) => {
     const { error: deleteError } = await supabase
       .from('documentos_viaje')
       .delete()
+      .eq('tenant_id', tenantId)
       .eq('id', id);
     
     if (deleteError) {
@@ -820,12 +855,14 @@ router.delete('/voucher/:id', authenticateToken, async (req, res) => {
     const { data: remainingVouchers } = await supabase
       .from('documentos_viaje')
       .select('id')
+      .eq('tenant_id', tenantId)
       .eq('venta_id', voucher.venta_id);
     
     if (!remainingVouchers || remainingVouchers.length === 0) {
       await supabase
         .from('ventas')
         .update({ estado: 'pendiente' })
+        .eq('tenant_id', tenantId)
         .eq('id', voucher.venta_id);
     }
     

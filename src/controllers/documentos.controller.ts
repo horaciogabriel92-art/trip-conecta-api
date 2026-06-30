@@ -1,8 +1,10 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import path from 'path';
+import { getTenantId } from '../utils/tenant';
 
 export const uploadDocumento = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { venta_id, tipo, descripcion } = req.body;
     const file = req.file;
     const user = (req as any).user;
@@ -16,6 +18,7 @@ export const uploadDocumento = async (req: Request, res: Response) => {
         const { data: venta, error: ventaError } = await supabase
             .from('ventas')
             .select('vendedor_id')
+            .eq('tenant_id', tenantId)
             .eq('id', venta_id)
             .single();
 
@@ -40,7 +43,8 @@ export const uploadDocumento = async (req: Request, res: Response) => {
                 nombre_archivo: file.originalname,
                 ruta_archivo: ruta_archivo,
                 descripcion,
-                subido_por: user.userId
+                subido_por: user.userId,
+                tenant_id: tenantId
             })
             .select()
             .single();
@@ -58,6 +62,7 @@ export const uploadDocumento = async (req: Request, res: Response) => {
 };
 
 export const getDocumentosByVenta = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { ventaId } = req.params;
     const user = (req as any).user;
     
@@ -66,6 +71,7 @@ export const getDocumentosByVenta = async (req: Request, res: Response) => {
         const { data: venta, error: ventaError } = await supabase
             .from('ventas')
             .select('vendedor_id')
+            .eq('tenant_id', tenantId)
             .eq('id', ventaId)
             .single();
 
@@ -83,6 +89,7 @@ export const getDocumentosByVenta = async (req: Request, res: Response) => {
                 *,
                 subido_por:subido_por (nombre, apellido)
             `)
+            .eq('tenant_id', tenantId)
             .eq('venta_id', ventaId)
             .order('fecha_subida', { ascending: false });
 
@@ -95,6 +102,7 @@ export const getDocumentosByVenta = async (req: Request, res: Response) => {
 };
 
 export const deleteDocumento = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     const user = (req as any).user;
     
@@ -107,6 +115,7 @@ export const deleteDocumento = async (req: Request, res: Response) => {
         const { error } = await supabase
             .from('documentos_viaje')
             .delete()
+            .eq('tenant_id', tenantId)
             .eq('id', id);
 
         if (error) throw error;
@@ -119,6 +128,7 @@ export const deleteDocumento = async (req: Request, res: Response) => {
 };
 
 export const downloadDocumento = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     const user = (req as any).user;
     
@@ -127,6 +137,7 @@ export const downloadDocumento = async (req: Request, res: Response) => {
         const { data: documento, error: docError } = await supabase
             .from('documentos_viaje')
             .select('*')
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .single();
 
@@ -138,6 +149,7 @@ export const downloadDocumento = async (req: Request, res: Response) => {
         const { data: venta, error: ventaError } = await supabase
             .from('ventas')
             .select('vendedor_id')
+            .eq('tenant_id', tenantId)
             .eq('id', documento.venta_id)
             .single();
 

@@ -1,7 +1,9 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
+import { getTenantId } from '../utils/tenant';
 
 export const getComisionesPendientes = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const user = (req as any).user;
     
     try {
@@ -11,6 +13,7 @@ export const getComisionesPendientes = async (req: Request, res: Response) => {
                 *,
                 vendedor:vendedor_id (nombre, apellido, email)
             `)
+            .eq('tenant_id', tenantId)
             .eq('comision_estado', 'pendiente')
             .neq('estado', 'cancelada');
         
@@ -54,6 +57,7 @@ export const getComisionesPendientes = async (req: Request, res: Response) => {
 };
 
 export const getComisionesPagadas = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const user = (req as any).user;
     
     try {
@@ -64,6 +68,7 @@ export const getComisionesPagadas = async (req: Request, res: Response) => {
                 vendedor:vendedor_id (nombre, apellido, email),
                 pagado_por:pagado_por (nombre, apellido)
             `)
+            .eq('tenant_id', tenantId)
             .order('fecha_pago', { ascending: false });
         
         // Si es vendedor, solo sus pagos
@@ -82,6 +87,7 @@ export const getComisionesPagadas = async (req: Request, res: Response) => {
 };
 
 export const registrarPagoComision = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { vendedor_id, ventas_ids, metodo_pago, referencia_pago, notas } = req.body;
     const admin_id = (req as any).user.userId;
 
@@ -95,6 +101,7 @@ export const registrarPagoComision = async (req: Request, res: Response) => {
         const { data: ventas, error: ventasError } = await supabase
             .from('ventas')
             .select('comision_monto')
+            .eq('tenant_id', tenantId)
             .in('id', ventas_ids)
             .eq('comision_estado', 'pendiente');
 
@@ -110,7 +117,8 @@ export const registrarPagoComision = async (req: Request, res: Response) => {
             metodo_pago,
             referencia_pago,
             pagado_por: admin_id,
-            notas
+            notas,
+            tenant_id: tenantId
         }));
 
         const { error: pagoError } = await supabase
@@ -126,6 +134,7 @@ export const registrarPagoComision = async (req: Request, res: Response) => {
                 comision_estado: 'pagada',
                 fecha_pago_comision: new Date().toISOString()
             })
+            .eq('tenant_id', tenantId)
             .in('id', ventas_ids);
 
         if (updateError) throw updateError;
@@ -142,6 +151,7 @@ export const registrarPagoComision = async (req: Request, res: Response) => {
 };
 
 export const getResumenComisiones = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const user = (req as any).user;
     
     try {
@@ -149,6 +159,7 @@ export const getResumenComisiones = async (req: Request, res: Response) => {
         const { data: ventas, error } = await supabase
             .from('ventas')
             .select('comision_monto, comision_estado')
+            .eq('tenant_id', tenantId)
             .eq('vendedor_id', user.userId)
             .neq('estado', 'cancelada');
 

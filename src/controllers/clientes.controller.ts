@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
+import { getTenantId } from '../utils/tenant';
 
 // ============================================
 // CLIENTES CONTROLLER - CRM
@@ -10,6 +11,7 @@ import { supabase } from '../config/supabase';
  * GET /clientes?q=&page=&limit=
  */
 export const getClientes = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { q, page = '1', limit = '20' } = req.query;
     const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
     const user = (req as any).user;
@@ -18,7 +20,7 @@ export const getClientes = async (req: Request, res: Response) => {
         let query = supabase
             .from('clientes')
             .select('*', { count: 'exact' })
-            .eq('tenant_id', user.tenantId);
+            .eq('tenant_id', tenantId);
         
         // Si es vendedor (no admin), solo ve sus clientes
         if (user?.role !== 'admin') {
@@ -60,6 +62,7 @@ export const getClientes = async (req: Request, res: Response) => {
  * GET /clientes/buscar?q=
  */
 export const buscarClientes = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { q } = req.query;
     const user = (req as any).user;
     
@@ -72,7 +75,7 @@ export const buscarClientes = async (req: Request, res: Response) => {
         let dbQuery = supabase
             .from('clientes')
             .select('id, nombre, apellido, email, telefono, tipo_documento, documento')
-            .eq('tenant_id', user.tenantId)
+            .eq('tenant_id', tenantId)
             .or(`nombre.ilike.${searchTerm},apellido.ilike.${searchTerm},email.ilike.${searchTerm},documento.ilike.${searchTerm}`);
         
         // Si es vendedor (no admin), solo busca en sus clientes
@@ -99,6 +102,7 @@ export const buscarClientes = async (req: Request, res: Response) => {
  * GET /clientes/:id
  */
 export const getClienteById = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     const user = (req as any).user;
     
@@ -108,7 +112,7 @@ export const getClienteById = async (req: Request, res: Response) => {
             .from('clientes')
             .select('*')
             .eq('id', id)
-            .eq('tenant_id', user.tenantId)
+            .eq('tenant_id', tenantId)
             .single();
         
         if (clienteError || !cliente) {
@@ -124,6 +128,7 @@ export const getClienteById = async (req: Request, res: Response) => {
         const { data: pasajeros, error: pasajerosError } = await supabase
             .from('pasajeros')
             .select('*')
+            .eq('tenant_id', tenantId)
             .eq('cliente_titular_id', id)
             .order('fecha_registro', { ascending: false });
         
@@ -131,6 +136,7 @@ export const getClienteById = async (req: Request, res: Response) => {
         const { data: historial, error: historialError } = await supabase
             .from('historial_cliente')
             .select('*')
+            .eq('tenant_id', tenantId)
             .eq('cliente_id', id)
             .order('fecha', { ascending: false })
             .limit(50);
@@ -139,6 +145,7 @@ export const getClienteById = async (req: Request, res: Response) => {
         const { data: cotizaciones, error: cotizacionesError } = await supabase
             .from('cotizaciones')
             .select('id, codigo, estado, precio_total, fecha_creacion, destino_principal')
+            .eq('tenant_id', tenantId)
             .eq('cliente_id', id)
             .order('fecha_creacion', { ascending: false })
             .limit(20);
@@ -165,6 +172,7 @@ export const getClienteById = async (req: Request, res: Response) => {
  * 3. Crear pasajero titular automáticamente
  */
 export const createCliente = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const {
         tipo_documento = 'CI',
         documento,
@@ -209,6 +217,7 @@ export const createCliente = async (req: Request, res: Response) => {
             const { data: existenteEmail } = await supabase
                 .from('clientes')
                 .select('id, nombre, apellido')
+                .eq('tenant_id', tenantId)
                 .eq('email', email)
                 .single();
             
@@ -224,6 +233,7 @@ export const createCliente = async (req: Request, res: Response) => {
             const { data: existenteDoc } = await supabase
                 .from('clientes')
                 .select('id, nombre, apellido')
+                .eq('tenant_id', tenantId)
                 .eq('tipo_documento', tipo_documento)
                 .eq('documento', documento)
                 .single();
@@ -255,6 +265,7 @@ export const createCliente = async (req: Request, res: Response) => {
                 ciudad,
                 pais,
                 registrado_por: userId,
+                tenant_id: tenantId,
                 notas_crm,
                 // Campos CRM nuevos
                 preferencias_viaje: preferencias_viaje ? JSON.stringify(preferencias_viaje) : null,
@@ -286,7 +297,8 @@ export const createCliente = async (req: Request, res: Response) => {
                 fecha_nacimiento,
                 nacionalidad,
                 es_cliente_registrado: true,
-                cliente_id: cliente.id
+                cliente_id: cliente.id,
+                tenant_id: tenantId
             })
             .select()
             .single();
@@ -304,7 +316,8 @@ export const createCliente = async (req: Request, res: Response) => {
                 tipo: 'nota_interna',
                 descripcion: 'Cliente creado en el sistema',
                 realizado_por: userId,
-                realizado_por_nombre: (req as any).user.nombre || 'Usuario'
+                realizado_por_nombre: (req as any).user.nombre || 'Usuario',
+                tenant_id: tenantId
             });
         
         res.status(201).json({
@@ -323,6 +336,7 @@ export const createCliente = async (req: Request, res: Response) => {
  * PUT /clientes/:id
  */
 export const updateCliente = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     const updates = req.body;
     const user = (req as any).user;
@@ -333,6 +347,7 @@ export const updateCliente = async (req: Request, res: Response) => {
         const { data: clienteCheck, error: checkError } = await supabase
             .from('clientes')
             .select('registrado_por')
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .single();
         
@@ -369,6 +384,7 @@ export const updateCliente = async (req: Request, res: Response) => {
                 ...filteredUpdates,
                 fecha_ultima_interaccion: new Date().toISOString()
             })
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .select()
             .single();
@@ -392,7 +408,8 @@ export const updateCliente = async (req: Request, res: Response) => {
                 descripcion: 'Datos del cliente actualizados',
                 detalle: filteredUpdates,
                 realizado_por: userId,
-                realizado_por_nombre: (req as any).user.nombre || 'Usuario'
+                realizado_por_nombre: (req as any).user.nombre || 'Usuario',
+                tenant_id: tenantId
             });
         
         res.json({ message: 'Cliente actualizado', cliente });
@@ -407,6 +424,7 @@ export const updateCliente = async (req: Request, res: Response) => {
  * POST /clientes/:id/pasajeros
  */
 export const addPasajero = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params; // cliente_titular_id
     const {
         tipo_documento = 'CI',
@@ -427,6 +445,7 @@ export const addPasajero = async (req: Request, res: Response) => {
         const { data: cliente } = await supabase
             .from('clientes')
             .select('id')
+            .eq('tenant_id', tenantId)
             .eq('id', id)
             .single();
         
@@ -439,6 +458,7 @@ export const addPasajero = async (req: Request, res: Response) => {
             const { data: existente } = await supabase
                 .from('pasajeros')
                 .select('id')
+                .eq('tenant_id', tenantId)
                 .eq('cliente_titular_id', id)
                 .eq('tipo_documento', tipo_documento)
                 .eq('documento', documento)
@@ -460,7 +480,8 @@ export const addPasajero = async (req: Request, res: Response) => {
                 fecha_nacimiento,
                 nacionalidad,
                 es_cliente_registrado: false, // Por defecto no es cliente
-                notas
+                notas,
+                tenant_id: tenantId
             })
             .select()
             .single();
@@ -482,12 +503,14 @@ export const addPasajero = async (req: Request, res: Response) => {
  * GET /clientes/:id/pasajeros
  */
 export const getPasajerosByCliente = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
     const { id } = req.params;
     
     try {
         const { data, error } = await supabase
             .from('pasajeros')
             .select('*')
+            .eq('tenant_id', tenantId)
             .eq('cliente_titular_id', id)
             .order('fecha_registro', { ascending: false });
         

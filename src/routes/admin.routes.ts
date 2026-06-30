@@ -3,6 +3,7 @@ import { supabase } from '../config/supabase';
 import { authenticateToken } from '../middleware/auth';
 import fs from 'fs';
 import path from 'path';
+import { getTenantId } from '../utils/tenant';
 
 const router = Router();
 
@@ -12,6 +13,7 @@ const router = Router();
  */
 router.post('/cleanup-comprobantes', authenticateToken, async (req, res) => {
     try {
+        const tenantId = getTenantId(req);
         const user = (req as any).user;
         if (user.role !== 'admin') {
             return res.status(403).json({ error: 'Solo admins pueden ejecutar esta acción' });
@@ -23,7 +25,8 @@ router.post('/cleanup-comprobantes', authenticateToken, async (req, res) => {
         // Obtener todos los comprobantes de la BD
         const { data: comprobantesBD, error } = await supabase
             .from('comprobantes_pago')
-            .select('id, nombre_archivo, ruta_archivo, cotizacion_id');
+            .select('id, nombre_archivo, ruta_archivo, cotizacion_id')
+            .eq('tenant_id', tenantId);
         
         if (error) {
             return res.status(500).json({ error: 'Error al obtener comprobantes', details: error.message });
@@ -63,6 +66,7 @@ router.post('/cleanup-comprobantes', authenticateToken, async (req, res) => {
             const { error: deleteError } = await supabase
                 .from('comprobantes_pago')
                 .delete()
+                .eq('tenant_id', tenantId)
                 .in('id', idsAEliminar);
             
             if (deleteError) {
@@ -88,6 +92,7 @@ router.post('/cleanup-comprobantes', authenticateToken, async (req, res) => {
  */
 router.get('/comprobantes-status', authenticateToken, async (req, res) => {
     try {
+        const tenantId = getTenantId(req);
         const user = (req as any).user;
         if (user.role !== 'admin') {
             return res.status(403).json({ error: 'Solo admins pueden acceder' });
@@ -108,6 +113,7 @@ router.get('/comprobantes-status', authenticateToken, async (req, res) => {
         const { data: comprobantesBD, error } = await supabase
             .from('comprobantes_pago')
             .select('id, nombre_archivo, ruta_archivo, fecha_subida')
+            .eq('tenant_id', tenantId)
             .order('fecha_subida', { ascending: false });
         
         if (error) {
@@ -188,6 +194,7 @@ router.post('/backup-comprobantes', authenticateToken, async (req, res) => {
  */
 router.get('/debug-vouchers', authenticateToken, async (req, res) => {
     try {
+        const tenantId = getTenantId(req);
         const user = (req as any).user;
         if (user.role !== 'admin') {
             return res.status(403).json({ error: 'Solo admins' });
@@ -218,6 +225,7 @@ router.get('/debug-vouchers', authenticateToken, async (req, res) => {
         const { data: documentosBD, error: dbError } = await supabase
             .from('documentos_viaje')
             .select('id, nombre_archivo, ruta_archivo, fecha_subida')
+            .eq('tenant_id', tenantId)
             .order('fecha_subida', { ascending: false })
             .limit(10);
 
@@ -274,6 +282,7 @@ router.get('/debug-vouchers', authenticateToken, async (req, res) => {
  */
 router.post('/cleanup-documentos', authenticateToken, async (req, res) => {
     try {
+        const tenantId = getTenantId(req);
         const user = (req as any).user;
         if (user.role !== 'admin') {
             return res.status(403).json({ error: 'Solo admins pueden ejecutar esta acción' });
@@ -284,7 +293,8 @@ router.post('/cleanup-documentos', authenticateToken, async (req, res) => {
         // Obtener todos los documentos de la BD
         const { data: documentosBD, error } = await supabase
             .from('documentos_viaje')
-            .select('id, nombre_archivo, ruta_archivo, venta_id');
+            .select('id, nombre_archivo, ruta_archivo, venta_id')
+            .eq('tenant_id', tenantId);
         
         if (error) {
             return res.status(500).json({ error: 'Error al obtener documentos', details: error.message });
@@ -331,6 +341,7 @@ router.post('/cleanup-documentos', authenticateToken, async (req, res) => {
             const { error: deleteError } = await supabase
                 .from('documentos_viaje')
                 .delete()
+                .eq('tenant_id', tenantId)
                 .in('id', idsAEliminar);
             
             if (deleteError) {
