@@ -56,6 +56,7 @@ app.use('/api/', apiLimiter);
 
 // Rutas
 import authRoutes from './routes/auth.routes';
+import registerRoutes from './routes/register.routes';
 import paquetesRoutes from './routes/paquetes.routes';
 import cotizacionesRoutes from './routes/cotizaciones.routes';
 import ventasRoutes from './routes/ventas.routes';
@@ -70,6 +71,7 @@ import reportesRoutes from './routes/reportes.routes';
 import recordatoriosRoutes from './routes/recordatorios.routes';
 import configRoutes from './routes/config.routes';
 app.use('/api/auth', express.json(), authRoutes);
+app.use('/api/register', express.json(), registerRoutes);
 app.use('/api/admin', express.json(), adminRoutes);
 app.use('/api/paquetes', express.json(), paquetesRoutes);
 app.use('/api/cotizaciones', express.json(), cotizacionesRoutes);
