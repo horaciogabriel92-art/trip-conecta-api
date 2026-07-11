@@ -28,7 +28,23 @@ const port = process.env.PORT || 3001;
 // Trust proxy (necesario para rate limiting detrás de Traefik/nginx)
 app.set('trust proxy', 1);
 
-app.use(cors());
+// CORS configurado para múltiples dominios del panel
+const allowedOrigins = [
+    'https://panel.tripconecta.com',
+    'https://travel.quotixos.com',
+    'http://localhost:3000'
+];
+
+app.use(cors({
+    origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error(`CORS not allowed for origin: ${origin}`));
+        }
+    },
+    credentials: true
+}));
 // NO aplicar express.json() globalmente - se aplica por ruta
 // app.use(express.json());
 
@@ -52,6 +68,7 @@ import adminRoutes from './routes/admin.routes';
 import jobsRoutes from './routes/jobs.routes';
 import reportesRoutes from './routes/reportes.routes';
 import recordatoriosRoutes from './routes/recordatorios.routes';
+import configRoutes from './routes/config.routes';
 app.use('/api/auth', express.json(), authRoutes);
 app.use('/api/admin', express.json(), adminRoutes);
 app.use('/api/paquetes', express.json(), paquetesRoutes);
@@ -65,6 +82,7 @@ app.use('/api/recordatorios', express.json(), recordatoriosRoutes);
 app.use('/api/upload', uploadRoutes); // Sin express.json() - usa multipart
 app.use('/api/jobs', express.json(), jobsRoutes);
 app.use('/api/reportes', express.json(), reportesRoutes);
+app.use('/api/config', configRoutes);
 
 // Health check con verificación de Supabase
 app.get('/api/health', async (req, res) => {
