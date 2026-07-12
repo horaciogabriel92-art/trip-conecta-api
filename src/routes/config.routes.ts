@@ -1,9 +1,11 @@
 import { Router } from 'express';
-import { getTenantConfig, getPublicPlans } from '../controllers/config.controller';
+import { authenticateToken } from '../middleware/auth';
+import { getTenantConfig, getPublicPlans, updateTenantConfig } from '../controllers/config.controller';
 
 const router = Router();
 
 router.get('/tenant', getTenantConfig);
 router.get('/plans', getPublicPlans);
+router.put('/tenant', authenticateToken, updateTenantConfig);
 
 export default router;
