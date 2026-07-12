@@ -317,6 +317,21 @@ export const getCotizaciones = async (req: Request, res: Response) => {
                 vendedoresMap[v.id] = v;
             });
         }
+
+        // 3c. Consultar ventas asociadas para obtener venta_id
+        const cotizacionIds = (cotizaciones || []).map((c: any) => c.id);
+        let ventaIdMap: Record<string, string> = {};
+        if (cotizacionIds.length > 0) {
+            const { data: ventas } = await supabase
+                .from('ventas')
+                .select('id, cotizacion_id')
+                .eq('tenant_id', tenantId)
+                .in('cotizacion_id', cotizacionIds);
+            
+            ventas?.forEach((v: any) => {
+                if (v.cotizacion_id) ventaIdMap[v.cotizacion_id] = v.id;
+            });
+        }
         
         // 4. Para cada cotización, obtener conteos de vuelos y hospedajes
         const cotizacionesConDatos = await Promise.all(
@@ -358,6 +373,7 @@ export const getCotizaciones = async (req: Request, res: Response) => {
                     cliente_nombre: clienteNombre,
                     vendedor_nombre: vendedorNombre,
                     paquete_nombre: paqueteNombre,
+                    venta_id: ventaIdMap[c.id] || null,
                     vuelos: Array(numVuelos || 0).fill({}), // Array vacío del tamaño correcto para la UI
                     hospedaje: Array(numHospedajes || 0).fill({}),
                     num_pasajeros: c.num_pasajeros || 1
