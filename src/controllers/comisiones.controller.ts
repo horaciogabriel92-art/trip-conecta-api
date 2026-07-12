@@ -1,12 +1,20 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { getTenantId } from '../utils/tenant';
+import { checkFeatureEnabled } from '../utils/features';
+
+const COMISIONES_FEATURE = 'comisiones';
 
 export const getComisionesPendientes = async (req: Request, res: Response) => {
     const tenantId = getTenantId(req);
     const user = (req as any).user;
-    
+
     try {
+        const { enabled } = await checkFeatureEnabled(req, COMISIONES_FEATURE);
+        if (!enabled) {
+            return res.status(403).json({ error: 'Módulo de comisiones no habilitado' });
+        }
+
         let query = supabase
             .from('ventas')
             .select(`
@@ -59,8 +67,13 @@ export const getComisionesPendientes = async (req: Request, res: Response) => {
 export const getComisionesPagadas = async (req: Request, res: Response) => {
     const tenantId = getTenantId(req);
     const user = (req as any).user;
-    
+
     try {
+        const { enabled } = await checkFeatureEnabled(req, COMISIONES_FEATURE);
+        if (!enabled) {
+            return res.status(403).json({ error: 'Módulo de comisiones no habilitado' });
+        }
+
         let query = supabase
             .from('pagos_comisiones')
             .select(`
@@ -95,6 +108,11 @@ export const registrarPagoComision = async (req: Request, res: Response) => {
         // Verificar que sea admin
         if ((req as any).user.role !== 'admin') {
             return res.status(403).json({ error: 'No autorizado' });
+        }
+
+        const { enabled } = await checkFeatureEnabled(req, COMISIONES_FEATURE);
+        if (!enabled) {
+            return res.status(403).json({ error: 'Módulo de comisiones no habilitado' });
         }
 
         // Calcular monto total
@@ -153,8 +171,13 @@ export const registrarPagoComision = async (req: Request, res: Response) => {
 export const getResumenComisiones = async (req: Request, res: Response) => {
     const tenantId = getTenantId(req);
     const user = (req as any).user;
-    
+
     try {
+        const { enabled } = await checkFeatureEnabled(req, COMISIONES_FEATURE);
+        if (!enabled) {
+            return res.status(403).json({ error: 'Módulo de comisiones no habilitado' });
+        }
+
         // Obtener todas las ventas del vendedor
         const { data: ventas, error } = await supabase
             .from('ventas')

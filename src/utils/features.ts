@@ -1,3 +1,7 @@
+import { Request } from 'express';
+import { supabase } from '../config/supabase';
+import { getTenantId } from './tenant';
+
 export interface PlanFeatures {
   comisiones?: boolean;
   vendedor_autoconfirma?: boolean;
@@ -80,4 +84,42 @@ export function isSimpleWorkflow(
 ): boolean {
   if (plan?.slug === 'free' || plan?.slug === 'freelance') return true;
   return getWorkflowMode(configuracion) === 'simple';
+}
+
+/**
+ * Consulta la BD para verificar si una feature está habilitada para el tenant actual.
+ * Útil en controllers donde no se dispone del plan/configuración precargados.
+ */
+export async function checkFeatureEnabled(
+  req: Request,
+  feature: string
+): Promise<{ enabled: boolean; allowed: boolean }> {
+  const tenantId = getTenantId(req);
+  const { data: tenant, error } = await supabase
+    .from('tenants')
+    .select('configuracion, plans:plan_id(features)')
+    .eq('id', tenantId)
+    .single();
+
+  if (error || !tenant) {
+    console.error(`[features] Error fetching tenant for feature ${feature}:`, error);
+    return { enabled: false, allowed: false };
+  }
+
+  const plan = normalizePlan(tenant.plans);
+  const configuracion = tenant.configuracion;
+
+  return {
+    allowed: planAllows(plan, feature),
+    enabled: isFeatureEnabled(configuracion, plan, feature)
+  };
+}
+
+function normalizePlan(plan: any): PlanConfig | null {
+  if (!plan) return null;
+  return {
+    slug: plan.slug || 'free',
+    nombre: plan.nombre || 'Free',
+    features: plan.features || {}
+  };
 }

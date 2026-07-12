@@ -5,6 +5,7 @@ import path from 'path';
 import { sendEmailAsync, getAdminEmails } from '../services/email.service';
 import { findComprobanteFile } from '../utils/fileSearch';
 import { getTenantId } from '../utils/tenant';
+import { checkFeatureEnabled } from '../utils/features';
 
 export const createCotizacion = async (req: Request, res: Response) => {
     const { 
@@ -152,6 +153,9 @@ export const createCotizacion = async (req: Request, res: Response) => {
         const fecha_expiracion = new Date();
         fecha_expiracion.setDate(fecha_expiracion.getDate() + 7);
 
+        // Verificar si el módulo de comisiones está habilitado
+        const { enabled: comisionesHabilitadas } = await checkFeatureEnabled(req, 'comisiones');
+
         // Preparar paquete_data con TODO el contenido
         const paqueteData: any = {
             titulo: paquete.titulo,
@@ -192,7 +196,7 @@ export const createCotizacion = async (req: Request, res: Response) => {
                 fecha_salida: fecha_salida || null,
                 precio_total,
                 precio_moneda: 'USD',
-                comision_vendedor: paquete.comision_monto_usd || 0,
+                comision_vendedor: comisionesHabilitadas ? (paquete.comision_monto_usd || 0) : 0,
                 tenant_id: tenantId,
                 paquete_data: paqueteData,
                 itinerario: paqueteData.itinerario,
@@ -742,6 +746,9 @@ export const convertirAVenta = async (req: Request, res: Response) => {
             return res.status(403).json({ error: 'No autorizado' });
         }
 
+        // Verificar si el módulo de comisiones está habilitado
+        const { enabled: comisionesHabilitadas } = await checkFeatureEnabled(req, 'comisiones');
+
         // Verificar que no exista ya una venta para esta cotización
         const { data: ventaExistente, error: ventaCheckError } = await supabase
             .from('ventas')
@@ -876,7 +883,7 @@ export const convertirAVenta = async (req: Request, res: Response) => {
                 precio_total: cotizacion.precio_total,
                 tenant_id: tenantId,
                 comision_porcentaje: 0,
-                comision_monto: cotizacion.comision_vendedor || 0,
+                comision_monto: comisionesHabilitadas ? (cotizacion.comision_vendedor || 0) : 0,
                 estado: 'pendiente',  // Inicialmente pendiente hasta que admin suba vouchers
                 notas: notasVenta || null,
                 metodo_pago: medio_pago || null,

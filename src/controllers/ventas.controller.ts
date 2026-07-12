@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { findComprobanteFile } from '../utils/fileSearch';
 import { getTenantId } from '../utils/tenant';
+import { checkFeatureEnabled } from '../utils/features';
 
 export const getVentas = async (req: Request, res: Response) => {
     const tenantId = getTenantId(req);
@@ -309,6 +310,11 @@ export const pagarComision = async (req: Request, res: Response) => {
         // Solo admin puede pagar comisiones
         if (user.role !== 'admin') {
             return res.status(403).json({ error: 'No autorizado' });
+        }
+
+        const { enabled } = await checkFeatureEnabled(req, 'comisiones');
+        if (!enabled) {
+            return res.status(403).json({ error: 'Módulo de comisiones no habilitado' });
         }
 
         // Obtener venta
