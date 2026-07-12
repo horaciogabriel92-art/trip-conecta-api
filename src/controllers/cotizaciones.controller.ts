@@ -452,6 +452,9 @@ export const getCotizacionById = async (req: Request, res: Response) => {
         let pasajeros = [];
         let vuelos = [];
         let hospedajes = [];
+        let traslados = [];
+        let seguros = [];
+        let extras = [];
         let paquete = null;
         let vendedor = null;
         
@@ -496,6 +499,38 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                 .eq('cotizacion_id', id);
             hospedajes = h || [];
         } catch (e) { console.log('Error cargando hospedajes:', e); }
+
+        // Cargar traslados
+        try {
+            const { data: t } = await supabase
+                .from('traslados')
+                .select('*')
+                .eq('tenant_id', tenantId)
+                .eq('cotizacion_id', id)
+                .order('orden', { ascending: true });
+            traslados = t || [];
+        } catch (e) { console.log('Error cargando traslados:', e); }
+
+        // Cargar seguros
+        try {
+            const { data: s } = await supabase
+                .from('seguros')
+                .select('*')
+                .eq('tenant_id', tenantId)
+                .eq('cotizacion_id', id);
+            seguros = s || [];
+        } catch (e) { console.log('Error cargando seguros:', e); }
+
+        // Cargar extras
+        try {
+            const { data: e } = await supabase
+                .from('extras')
+                .select('*')
+                .eq('tenant_id', tenantId)
+                .eq('cotizacion_id', id)
+                .order('orden', { ascending: true });
+            extras = e || [];
+        } catch (e) { console.log('Error cargando extras:', e); }
         
         // Si es cotización de paquete, cargar datos del paquete (vuelos, itinerario, etc.)
         if (cotizacion?.paquete_id) {
@@ -628,6 +663,9 @@ export const getCotizacionById = async (req: Request, res: Response) => {
             pasajeros,
             vuelos: vuelosMapeados,
             hospedajes,
+            traslados,
+            seguros,
+            extras,
             paquete,
             // Datos de venta (solo para admin/vendedor cuando está vendida)
             venta,
@@ -645,6 +683,8 @@ export const getCotizacionById = async (req: Request, res: Response) => {
             // Desglose de precios expuesto en raíz para frontends
             precio_vuelos: paqueteDataPrecios.precio_vuelos ?? cotizacion?.precio_vuelos ?? 0,
             precio_hospedajes: paqueteDataPrecios.precio_hospedajes ?? cotizacion?.precio_hospedajes ?? 0,
+            precio_traslados: paqueteDataPrecios.precio_traslados ?? cotizacion?.precio_traslados ?? 0,
+            precio_seguros: paqueteDataPrecios.precio_seguros ?? cotizacion?.precio_seguros ?? 0,
             precio_extras: paqueteDataPrecios.precio_extras ?? cotizacion?.precio_extras ?? 0,
             precio_subtotal: paqueteDataPrecios.precio_subtotal ?? cotizacion?.precio_subtotal ?? 0,
             precio_impuestos: paqueteDataPrecios.precio_impuestos ?? cotizacion?.precio_impuestos ?? 0,
@@ -1037,6 +1077,9 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
         nombre_cotizacion,
         vuelos,
         hospedajes,
+        traslados,
+        seguros,
+        extras,
         itinerario,
         incluye,
         no_incluye,
@@ -1204,7 +1247,9 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
         if (hospedajes && hospedajes.length > 0) {
             const hospedajesInsert = hospedajes.map((h: any) => ({
                 cotizacion_id: id,
-                nombre_hotel: h.nombre_hotel,
+                nombre_hotel: h.nombre_alojamiento || h.nombre_hotel,
+                nombre_alojamiento: h.nombre_alojamiento || h.nombre_hotel,
+                tipo_alojamiento: h.tipo_alojamiento || 'Hotel',
                 link_hotel: h.link_hotel,
                 cadena_hotelera: h.cadena_hotelera,
                 ciudad: h.ciudad,
@@ -1216,12 +1261,72 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
                 regimen: h.regimen,
                 precio_noche: h.precio_noche,
                 precio_total: h.precio_total,
+                precio_por_persona: h.precio_por_persona,
                 moneda: h.moneda || 'USD',
+                es_opcion: h.es_opcion || false,
+                seleccionado: h.seleccionado || false,
                 notas: h.notas
             }));
 
             const { error: hospedajesError } = await supabase.from('hospedajes').insert(hospedajesInsert.map((h: any) => ({ ...h, tenant_id: tenantId })));
             if (hospedajesError) console.error('Error updating hospedajes:', hospedajesError);
+        }
+
+        // 6b. Sincronizar traslados
+        await supabase.from('traslados').delete().eq('tenant_id', tenantId).eq('cotizacion_id', id);
+        if (traslados && traslados.length > 0) {
+            const trasladosInsert = traslados.map((t: any, index: number) => ({
+                cotizacion_id: id,
+                tenant_id: tenantId,
+                nombre: t.nombre,
+                origen: t.origen,
+                destino: t.destino,
+                fecha: t.fecha,
+                hora: t.hora,
+                precio_por_persona: t.precio_por_persona,
+                moneda: t.moneda || 'USD',
+                notas: t.notas,
+                orden: t.orden || index + 1
+            }));
+            const { error: trasladosError } = await supabase.from('traslados').insert(trasladosInsert);
+            if (trasladosError) console.error('Error updating traslados:', trasladosError);
+        }
+
+        // 6c. Sincronizar seguros
+        await supabase.from('seguros').delete().eq('tenant_id', tenantId).eq('cotizacion_id', id);
+        if (seguros && seguros.length > 0) {
+            const segurosInsert = seguros.map((s: any) => ({
+                cotizacion_id: id,
+                tenant_id: tenantId,
+                compania: s.compania,
+                tipo_cobertura: s.tipo_cobertura,
+                cobertura_detalle: s.cobertura_detalle,
+                fecha_inicio: s.fecha_inicio,
+                fecha_fin: s.fecha_fin,
+                precio_por_persona: s.precio_por_persona,
+                moneda: s.moneda || 'USD',
+                notas: s.notas
+            }));
+            const { error: segurosError } = await supabase.from('seguros').insert(segurosInsert);
+            if (segurosError) console.error('Error updating seguros:', segurosError);
+        }
+
+        // 6d. Sincronizar extras
+        await supabase.from('extras').delete().eq('tenant_id', tenantId).eq('cotizacion_id', id);
+        if (extras && extras.length > 0) {
+            const extrasInsert = extras.map((e: any, index: number) => ({
+                cotizacion_id: id,
+                tenant_id: tenantId,
+                nombre: e.nombre,
+                descripcion: e.descripcion,
+                fecha: e.fecha,
+                precio_por_persona: e.precio_por_persona,
+                moneda: e.moneda || 'USD',
+                incluido: e.incluido !== false,
+                orden: e.orden || index + 1
+            }));
+            const { error: extrasError } = await supabase.from('extras').insert(extrasInsert);
+            if (extrasError) console.error('Error updating extras:', extrasError);
         }
 
         // 7. Sincronizar pasajeros: eliminar existentes + insertar nuevos
@@ -1252,6 +1357,8 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
             itinerario: itinerario || cotizacionExistente.itinerario || null,
             precio_vuelos: precios?.vuelos || 0,
             precio_hospedajes: precios?.hospedajes || 0,
+            precio_traslados: precios?.traslados || 0,
+            precio_seguros: precios?.seguros || 0,
             precio_extras: precios?.extras || 0,
             precio_subtotal: precios?.subtotal || 0,
             precio_impuestos: precios?.impuestos || 0
@@ -1458,6 +1565,9 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
             tipo_habitacion,      // 'doble' | 'triple' | 'cuadruple'
             vuelos,
             hospedajes,
+            traslados,
+            seguros,
+            extras,
             itinerario,
             incluye,
             no_incluye,
@@ -1767,6 +1877,8 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
             // Desglose de precios
             precio_vuelos: precios?.vuelos || 0,
             precio_hospedajes: precios?.hospedajes || precioCalculado,
+            precio_traslados: precios?.traslados || 0,
+            precio_seguros: precios?.seguros || 0,
             precio_extras: precios?.extras || 0,
             precio_subtotal: precios?.subtotal || precioCalculado,
             precio_impuestos: precios?.impuestos || 0
@@ -1861,7 +1973,9 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
         if (hospedajes && hospedajes.length > 0) {
             const hospedajesInsert = hospedajes.map((h: any) => ({
                 cotizacion_id: cotizacion.id,
-                nombre_hotel: h.nombre_hotel,
+                nombre_hotel: h.nombre_alojamiento || h.nombre_hotel,
+                nombre_alojamiento: h.nombre_alojamiento || h.nombre_hotel,
+                tipo_alojamiento: h.tipo_alojamiento || 'Hotel',
                 link_hotel: h.link_hotel,
                 cadena_hotelera: h.cadena_hotelera,
                 ciudad: h.ciudad,
@@ -1873,7 +1987,10 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                 regimen: h.regimen,
                 precio_noche: h.precio_noche,
                 precio_total: h.precio_total,
+                precio_por_persona: h.precio_por_persona,
                 moneda: h.moneda || 'USD',
+                es_opcion: h.es_opcion || false,
+                seleccionado: h.seleccionado || false,
                 notas: h.notas
             }));
 
@@ -1883,6 +2000,78 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
 
             if (hospedajesError) {
                 console.error('Error creating hospedajes:', hospedajesError);
+            }
+        }
+
+        // ========== PASO 5b: GUARDAR TRASLADOS ==========
+        if (traslados && traslados.length > 0) {
+            const trasladosInsert = traslados.map((t: any, index: number) => ({
+                cotizacion_id: cotizacion.id,
+                tenant_id: tenantId,
+                nombre: t.nombre,
+                origen: t.origen,
+                destino: t.destino,
+                fecha: t.fecha,
+                hora: t.hora,
+                precio_por_persona: t.precio_por_persona,
+                moneda: t.moneda || 'USD',
+                notas: t.notas,
+                orden: t.orden || index + 1
+            }));
+
+            const { error: trasladosError } = await supabase
+                .from('traslados')
+                .insert(trasladosInsert);
+
+            if (trasladosError) {
+                console.error('Error creating traslados:', trasladosError);
+            }
+        }
+
+        // ========== PASO 5c: GUARDAR SEGUROS ==========
+        if (seguros && seguros.length > 0) {
+            const segurosInsert = seguros.map((s: any) => ({
+                cotizacion_id: cotizacion.id,
+                tenant_id: tenantId,
+                compania: s.compania,
+                tipo_cobertura: s.tipo_cobertura,
+                cobertura_detalle: s.cobertura_detalle,
+                fecha_inicio: s.fecha_inicio,
+                fecha_fin: s.fecha_fin,
+                precio_por_persona: s.precio_por_persona,
+                moneda: s.moneda || 'USD',
+                notas: s.notas
+            }));
+
+            const { error: segurosError } = await supabase
+                .from('seguros')
+                .insert(segurosInsert);
+
+            if (segurosError) {
+                console.error('Error creating seguros:', segurosError);
+            }
+        }
+
+        // ========== PASO 5d: GUARDAR EXTRAS ==========
+        if (extras && extras.length > 0) {
+            const extrasInsert = extras.map((e: any, index: number) => ({
+                cotizacion_id: cotizacion.id,
+                tenant_id: tenantId,
+                nombre: e.nombre,
+                descripcion: e.descripcion,
+                fecha: e.fecha,
+                precio_por_persona: e.precio_por_persona,
+                moneda: e.moneda || 'USD',
+                incluido: e.incluido !== false,
+                orden: e.orden || index + 1
+            }));
+
+            const { error: extrasError } = await supabase
+                .from('extras')
+                .insert(extrasInsert);
+
+            if (extrasError) {
+                console.error('Error creating extras:', extrasError);
             }
         }
 
