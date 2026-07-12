@@ -24,8 +24,6 @@ export const createCotizacion = async (req: Request, res: Response) => {
     const vendedor_id = (req as any).user.userId;
     const tenantId = getTenantId(req);
 
-    console.log('[createCotizacion] Data:', req.body);
-
     try {
         // ========== PASO 1: OBTENER PAQUETE ==========
         const { data: paquete, error: paqueteError } = await supabase
@@ -267,8 +265,6 @@ export const getCotizaciones = async (req: Request, res: Response) => {
     const tenantId = getTenantId(req);
     const user = (req as any).user;
     try {
-        console.log('[getCotizaciones] User:', { userId: user?.userId, role: user?.role });
-        
         // 1. Traer cotizaciones básicas
         let query = supabase
             .from('cotizaciones')
@@ -287,8 +283,6 @@ export const getCotizaciones = async (req: Request, res: Response) => {
             console.error('[getCotizaciones] Error:', error);
             return res.status(500).json({ error: 'Error al obtener cotizaciones', details: error.message });
         }
-        
-        console.log('[getCotizaciones] Encontradas:', cotizaciones?.length || 0);
         
         // 2. Obtener IDs únicos de clientes y vendedores para consulta batch
         const clienteIds = [...new Set(cotizaciones?.filter(c => c.cliente_id).map(c => c.cliente_id) || [])];
@@ -396,10 +390,7 @@ export const getCotizacionById = async (req: Request, res: Response) => {
     const tenantId = getTenantId(req);
     const { id } = req.params;
     const user = (req as any).user;
-    
-    console.log('[getCotizacionById] User:', { userId: user?.userId, role: user?.role });
-    console.log('[getCotizacionById] Cotizacion ID:', id);
-    
+
     try {
         // Primero: consulta simple sin joins para verificar existencia y permisos
         let basicQuery = supabase
@@ -413,8 +404,6 @@ export const getCotizacionById = async (req: Request, res: Response) => {
         }
         
         const { data: basicData, error: basicError } = await basicQuery.single();
-        
-        console.log('[getCotizacionById] Basic query:', { found: !!basicData, error: basicError?.message });
         
         if (basicError || !basicData) {
             return res.status(404).json({ error: 'Cotización no encontrada o sin permisos' });
@@ -472,8 +461,8 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                     .single();
                 vendedor = v;
             }
-        } catch (e) { console.log('Error cargando vendedor:', e); }
-        
+        } catch (e) { /* noop */ }
+
         // Cargar pasajeros
         try {
             const { data: p } = await supabase
@@ -482,8 +471,8 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                 .eq('tenant_id', tenantId)
                 .eq('cotizacion_id', id);
             pasajeros = p || [];
-        } catch (e) { console.log('Error cargando pasajeros:', e); }
-        
+        } catch (e) { /* noop */ }
+
         // Cargar vuelos desde tabla vuelos (cotizaciones manuales)
         try {
             const { data: v } = await supabase
@@ -492,8 +481,8 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                 .eq('tenant_id', tenantId)
                 .eq('cotizacion_id', id);
             vuelos = v || [];
-        } catch (e) { console.log('Error cargando vuelos:', e); }
-        
+        } catch (e) { /* noop */ }
+
         // Cargar hospedajes
         try {
             const { data: h } = await supabase
@@ -502,7 +491,7 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                 .eq('tenant_id', tenantId)
                 .eq('cotizacion_id', id);
             hospedajes = h || [];
-        } catch (e) { console.log('Error cargando hospedajes:', e); }
+        } catch (e) { /* noop */ }
 
         // Cargar traslados
         try {
@@ -513,7 +502,7 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                 .eq('cotizacion_id', id)
                 .order('orden', { ascending: true });
             traslados = t || [];
-        } catch (e) { console.log('Error cargando traslados:', e); }
+        } catch (e) { /* noop */ }
 
         // Cargar seguros
         try {
@@ -523,7 +512,7 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                 .eq('tenant_id', tenantId)
                 .eq('cotizacion_id', id);
             seguros = s || [];
-        } catch (e) { console.log('Error cargando seguros:', e); }
+        } catch (e) { /* noop */ }
 
         // Cargar extras
         try {
@@ -534,8 +523,8 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                 .eq('cotizacion_id', id)
                 .order('orden', { ascending: true });
             extras = e || [];
-        } catch (e) { console.log('Error cargando extras:', e); }
-        
+        } catch (e) { /* noop */ }
+
         // Si es cotización de paquete, cargar datos del paquete (vuelos, itinerario, etc.)
         if (cotizacion?.paquete_id) {
             try {
@@ -551,9 +540,9 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                 if (vuelos.length === 0 && paquete?.vuelos) {
                     vuelos = paquete.vuelos;
                 }
-            } catch (e) { console.log('Error cargando paquete:', e); }
+            } catch (e) { /* noop */ }
         }
-        
+
         // ========== CARGAR DATOS DE VENTA, COMPROBANTES Y PAGOS ==========
         let venta = null;
         let comprobantesPago: any[] = [];
@@ -584,7 +573,7 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                         .eq('cotizacion_id', id)
                         .order('fecha_pago', { ascending: false });
                     pagos = pagosData || [];
-                } catch (e) { console.log('Error cargando pagos:', e); }
+                } catch (e) { /* noop */ }
 
                 // Parsear comprobantes_pago_urls si existe
                 if (venta.comprobantes_pago_urls) {
@@ -603,14 +592,10 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                                     ruta_archivo: url,
                                     es_descargable: true
                                 });
-                            } else {
-                                console.log(`[getCotizacionById] Archivo no existe en ninguna ruta conocida: ${filename}`);
                             }
                             idx++;
                         }
-                    } catch (e) {
-                        console.log('Error parseando comprobantes_pago_urls:', e);
-                    }
+                    } catch (e) { /* noop */ }
                 }
                 
                 // También buscar en tabla comprobantes_pago si existe
@@ -636,19 +621,16 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                                         ruta_archivo: compUrl,
                                         es_descargable: true
                                     });
-                                } else {
-                                    console.log(`[getCotizacionById] Comprobante BD sin archivo: ${comp.ruta_archivo}`);
                                 }
                             }
                         }
                     }
                 } catch (e) {
                     // La tabla puede no existir, ignorar error
-                    console.log('Tabla comprobantes_pago no disponible:', e);
                 }
             }
-        } catch (e) { 
-            console.log('Error cargando venta/comprobantes:', e); 
+        } catch (e) {
+            // noop
         }
         
         // Mapear vuelos para compatibilidad de campos (origen_nombre -> origen_ciudad, etc.)
@@ -715,11 +697,6 @@ export const convertirAVenta = async (req: Request, res: Response) => {
     } = req.body;
     const user = (req as any).user;
     
-    console.log('=== CONVERTIR A VENTA ===');
-    console.log('ID:', id);
-    console.log('User:', user?.userId, 'Role:', user?.role);
-    console.log('Body:', { pago_realizado, monto_pagado, tipo_pago, medio_pago, observaciones_pago: observaciones_pago?.substring(0, 50) });
-    
     try {
         // Obtener cotización con sus comprobantes
         const { data: cotizacion, error: cotError } = await supabase
@@ -732,14 +709,6 @@ export const convertirAVenta = async (req: Request, res: Response) => {
         if (cotError || !cotizacion) {
             return res.status(404).json({ error: 'Cotización no encontrada' });
         }
-
-        console.log('Cotización encontrada:', { 
-            id: cotizacion.id, 
-            cliente_id: cotizacion.cliente_id,
-            cliente_nombre: cotizacion.cliente_nombre,
-            cliente_email: cotizacion.cliente_email,
-            cliente_telefono: cotizacion.cliente_telefono
-        });
 
         // Verificar que sea del vendedor o admin
         if (user.role !== 'admin' && cotizacion.vendedor_id !== user.userId) {
@@ -782,7 +751,6 @@ export const convertirAVenta = async (req: Request, res: Response) => {
                 clienteNombre = `${cliente.nombre} ${cliente.apellido}`.trim();
                 clienteEmail = cliente.email;
                 clienteTelefono = cliente.telefono;
-                console.log('Cliente obtenido de tabla clientes:', { clienteNombre, clienteEmail });
             }
         }
 
@@ -865,8 +833,6 @@ export const convertirAVenta = async (req: Request, res: Response) => {
         }
 
         // Crear venta con datos heredados
-        console.log('Creando venta con:', { clienteNombre, clienteEmail, clienteTelefono });
-        
         const { data: venta, error: ventaError } = await supabase
             .from('ventas')
             .insert({
@@ -912,16 +878,7 @@ export const convertirAVenta = async (req: Request, res: Response) => {
         const montoPagadoNum = Number(monto_pagado) || 0;
         const montoRestante = Math.max(0, cotizacion.precio_total - montoPagadoNum);
         
-        console.log('💰 Datos de pago:', {
-            pago_realizado,
-            monto_pagado: montoPagadoNum,
-            monto_restante: montoRestante,
-            tipo_pago,
-            fecha_pago_resto
-        });
-        
         // Actualizar cotización con datos de pago - ESTO ES CRÍTICO
-        console.log('Actualizando cotización a vendida...');
         
         const updateData: any = { 
             estado: 'vendida',
@@ -953,7 +910,6 @@ export const convertirAVenta = async (req: Request, res: Response) => {
             .update(updateData)
             .eq('tenant_id', tenantId)
             .eq('id', id);
-        
         if (updateError) {
             console.error('ERROR CRÍTICO: Venta creada pero cotización no actualizada:', updateError);
             // Intentar compensación: actualizar venta con estado especial
@@ -972,8 +928,6 @@ export const convertirAVenta = async (req: Request, res: Response) => {
                 details: updateError.message
             });
         }
-        
-        console.log('✅ Cotización actualizada a vendida exitosamente');
 
         // Registrar pago inicial en historial
         if (pago_realizado && montoPagadoNum > 0) {
@@ -1432,11 +1386,7 @@ export const updateCotizacion = async (req: Request, res: Response) => {
     const { id } = req.params;
     const data = req.body;
     const user = (req as any).user;
-    
-    console.log('UPDATE COTIZACION - ID recibido:', id, 'tipo:', typeof id);
-    console.log('UPDATE COTIZACION - User:', user.userId, 'Role:', user.role);
-    console.log('UPDATE COTIZACION - Data:', data);
-    
+
     try {
         // Verificar que sea del vendedor o admin
         if (user.role !== 'admin') {
@@ -1446,8 +1396,6 @@ export const updateCotizacion = async (req: Request, res: Response) => {
                 .eq('tenant_id', tenantId)
                 .eq('id', id)
                 .single();
-            
-            console.log('UPDATE COTIZACION - Perm check:', cot, 'Error:', permError);
             
             if (!cot || cot.vendedor_id !== user.userId) {
                 return res.status(403).json({ error: 'No autorizado' });
@@ -1461,8 +1409,6 @@ export const updateCotizacion = async (req: Request, res: Response) => {
             .eq('id', id)
             .select()
             .single();
-
-        console.log('UPDATE COTIZACION - Result:', cotizacion, 'Error:', error);
 
         if (error || !cotizacion) {
             return res.status(404).json({ error: 'Cotización no encontrada', details: error });
@@ -1716,7 +1662,6 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
         
         // Si NO existe pasajero titular, crearlo automáticamente con datos del cliente
         if (!pasajeroTitular && clienteData) {
-            console.log('Creando pasajero titular automáticamente para cliente:', clienteFinalId);
             const { data: nuevoTitular, error: errorCreando } = await supabase
                 .from('pasajeros')
                 .insert({
@@ -1738,7 +1683,6 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                 console.error('Error creando pasajero titular:', errorCreando);
             } else {
                 pasajeroTitular = nuevoTitular;
-                console.log('Pasajero titular creado:', nuevoTitular?.id);
             }
         }
         
@@ -2219,10 +2163,7 @@ export const enviarCotizacion = async (req: Request, res: Response) => {
     const tenantId = getTenantId(req);
     const { id } = req.params;
     const user = (req as any).user;
-    
-    console.log('ENVIAR COTIZACION - ID recibido:', id);
-    console.log('ENVIAR COTIZACION - User:', user.userId, 'Role:', user.role);
-    
+
     try {
         // Primero verificar que exista la cotización
         const { data: cotizacionExistente, error: findError } = await supabase
@@ -2231,8 +2172,6 @@ export const enviarCotizacion = async (req: Request, res: Response) => {
             .eq('tenant_id', tenantId)
             .eq('id', id)
             .single();
-        
-        console.log('ENVIAR COTIZACION - Found:', cotizacionExistente, 'Error:', findError);
         
         if (findError || !cotizacionExistente) {
             return res.status(404).json({ error: 'Cotización no encontrada', details: findError });

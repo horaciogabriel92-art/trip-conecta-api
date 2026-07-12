@@ -57,7 +57,7 @@ export async function sendEmail(payload: EmailPayload): Promise<void> {
       enviado_en: new Date().toISOString(),
     });
 
-    console.log(`[EmailService] Enviado a ${to}: ${subject}`, result);
+    console.log(`[EmailService] Email enviado: ${subject}`);
   } catch (error: any) {
     console.error('[EmailService] Error enviando email:', error);
 

@@ -229,9 +229,7 @@ export const getPaqueteById = async (req: Request, res: Response) => {
 export const createPaquete = async (req: Request, res: Response) => {
     const tenantId = getTenantId(req);
     const dataFrontend: PaqueteFrontend = req.body;
-    
-    console.log('Creating paquete with frontend data:', JSON.stringify(dataFrontend, null, 2));
-    
+
     try {
         // Generar código si no viene
         if (!dataFrontend.codigo) {
@@ -247,8 +245,6 @@ export const createPaquete = async (req: Request, res: Response) => {
         if (!dataBD.titulo) dataBD.titulo = 'Paquete sin título';
         if (!dataBD.precio_base) dataBD.precio_base = 0;
         if (!dataBD.duracion_dias) dataBD.duracion_dias = 7;
-
-        console.log('Mapped data for Supabase:', JSON.stringify(dataBD, null, 2));
 
         const { data: paquete, error } = await supabase
             .from('paquetes')
@@ -282,9 +278,7 @@ export const updatePaquete = async (req: Request, res: Response) => {
     const tenantId = getTenantId(req);
     const { id } = req.params;
     const dataFrontend: PaqueteFrontend = req.body;
-    
-    console.log('Updating paquete:', id, 'with data:', dataFrontend);
-    
+
     try {
         // Mapear al formato de la BD
         const dataBD = mapearPaqueteBD(dataFrontend);

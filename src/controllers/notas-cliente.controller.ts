@@ -8,14 +8,12 @@ import { getTenantId } from '../utils/tenant';
  */
 export const getNotasByCliente = async (req: Request, res: Response) => {
     const tenantId = getTenantId(req);
-    console.log('[getNotasByCliente] Ruta ejecutada. Params:', req.params);
     const cliente_id = req.params.id;
     const userId = (req as any).user.userId;
     const userRole = (req as any).user.rol;
 
     try {
         // Verificar acceso al cliente (solo admin ve todas las notas)
-        console.log('[getNotasByCliente] Verificando cliente:', cliente_id);
         const { data: cliente, error: clienteError } = await supabase
             .from('clientes')
             .select('id')
@@ -32,8 +30,6 @@ export const getNotasByCliente = async (req: Request, res: Response) => {
             console.error('[getNotasByCliente] Cliente no existe:', cliente_id);
             return res.status(404).json({ error: 'Cliente no encontrado' });
         }
-        
-        console.log('[getNotasByCliente] Cliente encontrado:', cliente);
 
         // Construir query base
         let query = supabase
@@ -92,8 +88,6 @@ export const createNota = async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Cliente no encontrado' });
         }
 
-        console.log('[createNota] Insertando nota:', { cliente_id, vendedor_id: userId, tipo, es_privada });
-        
         const { data: nota, error } = await supabase
             .from('notas_cliente')
             .insert({

@@ -8,7 +8,6 @@ import { findComprobanteFile } from '../utils/fileSearch';
 import { getTenantId } from '../utils/tenant';
 
 const router = Router();
-console.log('[UPLOAD ROUTES] Loading upload routes...');
 
 // Configurar multer para memoria (imágenes de paquetes a Supabase)
 const upload = multer({ 
@@ -66,12 +65,6 @@ const uploadComprobante = multer({
 router.post('/paquete-imagen', authenticateToken, upload.single('imagen'), async (req, res) => {
   const tenantId = getTenantId(req);
   try {
-    console.log('Upload request received:', {
-      headers: req.headers['content-type'],
-      file: req.file,
-      body: req.body
-    });
-    
     if (!req.file) {
       return res.status(400).json({ error: 'No se proporcionó ninguna imagen', debug: { contentType: req.headers['content-type'] } });
     }
@@ -337,32 +330,26 @@ router.get('/comprobante-pago/download-by-filename/:filename', authenticateToken
     const filenameParam = req.params.filename;
     let filename = Array.isArray(filenameParam) ? filenameParam[0] : filenameParam;
     
-    console.log('[Download] Raw filename param:', filename);
-    
     // Decodificar URL encoding si está presente (reemplazar %2F por /, etc.)
     try {
       filename = decodeURIComponent(filename);
     } catch (e) {
-      console.log('[Download] No URL encoding detected');
+      // noop
     }
-    
+
     // Extraer solo el nombre del archivo (eliminar cualquier path)
     const basename = path.basename(filename);
-    
-    console.log('[Download] Basename:', basename);
-    
+
     if (!basename || basename === '.' || basename === '..') {
       return res.status(400).json({ error: 'Nombre de archivo inválido' });
     }
 
     const filePath = findComprobanteFile(basename);
-    
+
     if (!filePath) {
-      console.error('[Download] Archivo no encontrado en ninguna ruta:', basename, 'cwd:', process.cwd(), 'STORAGE_PATH:', process.env.STORAGE_PATH);
+      console.error('[Download] Archivo no encontrado:', basename);
       return res.status(404).json({ error: 'Archivo no encontrado' });
     }
-    
-    console.log('[Download] Archivo encontrado:', filePath);
 
     // Determinar content type
     const ext = path.extname(basename).toLowerCase();
@@ -874,5 +861,4 @@ router.delete('/voucher/:id', authenticateToken, async (req, res) => {
   }
 });
 
-console.log('[UPLOAD ROUTES] Upload routes loaded successfully');
 export default router;

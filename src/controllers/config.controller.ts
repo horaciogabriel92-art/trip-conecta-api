@@ -147,7 +147,7 @@ export const getTenantConfig = async (req: Request, res: Response) => {
       .single();
 
     if (error || !tenant) {
-      console.log(`[config] No tenant found for domain: ${normalizedDomain}, returning generic`);
+      console.warn(`[config] No tenant found for domain: ${normalizedDomain}, returning generic`);
       return res.json(QUOTIX_TRAVEL_CONFIG);
     }
 

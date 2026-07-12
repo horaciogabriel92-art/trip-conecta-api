@@ -30,9 +30,7 @@ export const getVentaById = async (req: Request, res: Response) => {
     const tenantId = getTenantId(req);
     const { id } = req.params;
     const user = (req as any).user;
-    
-    console.log('getVentaById - ID:', id, 'User:', user?.userId, 'Role:', user?.role);
-    
+
     try {
         // Paso 1: Obtener venta básica
         let query = supabase
@@ -56,8 +54,6 @@ export const getVentaById = async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Venta no encontrada' });
         }
 
-        console.log('Venta encontrada:', { id: venta.id, cotizacion_id: venta.cotizacion_id });
-
         // Paso 2: Obtener comprobantes de pago si hay cotizacion_id
         let comprobantesConUrl: any[] = [];
         let pagos: any[] = [];
@@ -77,7 +73,6 @@ export const getVentaById = async (req: Request, res: Response) => {
                         url: `/uploads/comprobantes/${c.ruta_archivo}`,
                         es_descargable: true
                     }));
-                console.log('Comprobantes encontrados:', comprobantes?.length, 'Con archivo físico:', comprobantesConUrl.length);
             }
 
             if (pagosError) {
@@ -226,7 +221,7 @@ export const registrarPago = async (req: Request, res: Response) => {
                     tenant_id: tenantId
                 });
             } catch (e) {
-                console.log('Error registrando historial_cliente:', e);
+                console.warn('Error registrando historial_cliente:', e);
             }
         }
 
@@ -290,7 +285,7 @@ export const updateEstadoVenta = async (req: Request, res: Response) => {
                 });
             }
         } catch (e) {
-            console.log('Error registrando historial_cliente:', e);
+            console.warn('Error registrando historial_cliente:', e);
         }
 
         res.json({ message: 'Estado actualizado', venta });

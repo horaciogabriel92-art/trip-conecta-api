@@ -376,8 +376,6 @@ export const updateCliente = async (req: Request, res: Response) => {
     });
     
     try {
-        console.log('[updateCliente] Updating cliente:', id, 'with fields:', Object.keys(filteredUpdates));
-        
         const { data: cliente, error } = await supabase
             .from('clientes')
             .update({

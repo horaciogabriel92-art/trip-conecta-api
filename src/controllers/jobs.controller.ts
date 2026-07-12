@@ -46,7 +46,7 @@ export const sendPaymentReminders = async (req: Request, res: Response) => {
     for (const c of cotizaciones || []) {
       const vendedor = (c as any).users;
       if (!vendedor?.email) {
-        console.log(`[Jobs] Vendedor sin email para cotización ${c.codigo}`);
+        console.warn(`[Jobs] Vendedor sin email para cotización ${c.codigo}`);
         continue;
       }
 
@@ -138,7 +138,7 @@ export const sendCotizacionVencimientoReminders = async (req: Request, res: Resp
     for (const c of cotizaciones || []) {
       const vendedor = (c as any).users;
       if (!vendedor?.email) {
-        console.log(`[Jobs] Vendedor sin email para cotización ${c.codigo}`);
+        console.warn(`[Jobs] Vendedor sin email para cotización ${c.codigo}`);
         continue;
       }
 
@@ -215,7 +215,7 @@ export const sendSeguimientoReminders = async (req: Request, res: Response) => {
     for (const c of cotizaciones || []) {
       const vendedor = (c as any).users;
       if (!vendedor?.email) {
-        console.log(`[Jobs] Vendedor sin email para cotización ${c.codigo}`);
+        console.warn(`[Jobs] Vendedor sin email para cotización ${c.codigo}`);
         continue;
       }
 
