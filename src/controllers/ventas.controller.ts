@@ -9,8 +9,8 @@ export const getVentas = async (req: Request, res: Response) => {
     try {
         let query = supabase.from('ventas').select('*').eq('tenant_id', tenantId);
         
-        // Si no es admin, solo ver las suyas
-        if (user.role !== 'admin') {
+        // Filter by seller unless admin or has permission to see all sales
+        if (user.role !== 'admin' && user.permisos?.ver_todas_ventas !== true) {
             query = query.eq('vendedor_id', user.userId);
         }
 
@@ -40,7 +40,7 @@ export const getVentaById = async (req: Request, res: Response) => {
             .eq('tenant_id', tenantId)
             .eq('id', id);
         
-        if (user.role !== 'admin') {
+        if (user.role !== 'admin' && user.permisos?.ver_todas_ventas !== true) {
             query = query.eq('vendedor_id', user.userId);
         }
 

@@ -16,15 +16,36 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     try {
         const decoded: any = jwt.verify(token, JWT_SECRET);
         
-        // Fallback para tokens viejos sin tenantId
-        if (!decoded.tenantId) {
+        // Fallback para tokens viejos sin tenantId o permisos
+        if (!decoded.tenantId || !decoded.permisos) {
             const { data: user } = await supabase
                 .from('users')
-                .select('tenant_id')
+                .select('tenant_id, rol, permisos')
                 .eq('id', decoded.userId)
                 .single();
             if (user?.tenant_id) {
                 decoded.tenantId = user.tenant_id;
+            }
+            if (user?.permisos) {
+                decoded.permisos = user.permisos;
+            } else if (user?.rol) {
+                decoded.permisos = user.rol === 'admin' 
+                    ? {
+                        ver_todas_cotizaciones: true,
+                        ver_todas_ventas: true,
+                        ver_reportes: true,
+                        gestionar_paquetes: true,
+                        ver_comisiones_otros: true,
+                        editar_clientes_otros: true
+                      }
+                    : {
+                        ver_todas_cotizaciones: false,
+                        ver_todas_ventas: false,
+                        ver_reportes: false,
+                        gestionar_paquetes: true,
+                        ver_comisiones_otros: false,
+                        editar_clientes_otros: false
+                      };
             }
         }
         

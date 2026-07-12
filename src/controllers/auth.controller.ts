@@ -17,6 +17,28 @@ const loginSchema = z.object({
   password: z.string().min(6)
 });
 
+export const defaultAdminPermissions = {
+  ver_todas_cotizaciones: true,
+  ver_todas_ventas: true,
+  ver_reportes: true,
+  gestionar_paquetes: true,
+  ver_comisiones_otros: true,
+  editar_clientes_otros: true
+};
+
+export const defaultVendedorPermissions = {
+  ver_todas_cotizaciones: false,
+  ver_todas_ventas: false,
+  ver_reportes: false,
+  gestionar_paquetes: true,
+  ver_comisiones_otros: false,
+  editar_clientes_otros: false
+};
+
+export const getDefaultPermissions = (rol: string) => {
+  return rol === 'admin' ? { ...defaultAdminPermissions } : { ...defaultVendedorPermissions };
+};
+
 export const login = async (req: Request, res: Response) => {
   try {
     const { email, password } = loginSchema.parse(req.body);
@@ -49,13 +71,18 @@ export const login = async (req: Request, res: Response) => {
       .eq('tenant_id', user.tenant_id)
       .eq('id', user.id);
 
+    const permissions = user.rol === 'admin' 
+      ? defaultAdminPermissions 
+      : (user.permisos || defaultVendedorPermissions);
+
     // Generar JWT
     const token = jwt.sign(
       { 
         userId: user.id, 
         email: user.email, 
         role: user.rol,
-        tenantId: user.tenant_id
+        tenantId: user.tenant_id,
+        permisos: permissions
       },
       JWT_SECRET,
       { expiresIn: '7d' }
@@ -71,7 +98,8 @@ export const login = async (req: Request, res: Response) => {
         rol: user.rol,
         tenant_id: user.tenant_id,
         comision_porcentaje: user.comision_porcentaje,
-        preferencias: user.preferencias || {}
+        preferencias: user.preferencias || {},
+        permisos: permissions
       }
     });
   } catch (error) {
@@ -87,7 +115,7 @@ export const getProfile = async (req: Request, res: Response) => {
     
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, email, nombre, apellido, telefono, rol, comision_porcentaje, preferencias, fecha_registro')
+      .select('id, email, nombre, apellido, telefono, rol, comision_porcentaje, preferencias, permisos, fecha_registro')
       .eq('id', userId)
       .eq('tenant_id', tenantId)
       .single();
@@ -147,7 +175,9 @@ export const createUser = async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'No autorizado' });
     }
 
-    const { email, password, nombre, apellido, rol, comision_porcentaje } = req.body;
+    const { email, password, nombre, apellido, rol, comision_porcentaje, permisos } = req.body;
+    const assignedRol = rol || 'vendedor';
+    const assignedPermissions = permisos || getDefaultPermissions(assignedRol);
 
     // Hash de contraseña
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -159,8 +189,9 @@ export const createUser = async (req: Request, res: Response) => {
         password: hashedPassword,
         nombre,
         apellido,
-        rol: rol || 'vendedor',
+        rol: assignedRol,
         comision_porcentaje: comision_porcentaje || null,
+        permisos: assignedPermissions,
         tenant_id: tenantId
       })
       .select()
@@ -180,7 +211,8 @@ export const createUser = async (req: Request, res: Response) => {
         email: data.email,
         nombre: data.nombre,
         apellido: data.apellido,
-        rol: data.rol
+        rol: data.rol,
+        permisos: data.permisos
       }
     });
   } catch (error) {
@@ -198,7 +230,7 @@ export const updateUser = async (req: Request, res: Response) => {
     }
 
     const { id } = req.params;
-    const { nombre, apellido, telefono, email, comision_porcentaje, activo, password } = req.body;
+    const { nombre, apellido, telefono, email, comision_porcentaje, activo, password, permisos } = req.body;
 
     // Si se cambia el email, verificar que no esté en uso por otro usuario
     if (email) {
@@ -223,6 +255,10 @@ export const updateUser = async (req: Request, res: Response) => {
       comision_porcentaje,
       activo
     };
+
+    if (permisos !== undefined) {
+      updateData.permisos = permisos;
+    }
 
     if (password && password.length >= 6) {
       updateData.password = await bcrypt.hash(password, 10);
@@ -250,7 +286,8 @@ export const updateUser = async (req: Request, res: Response) => {
         rol: data.rol,
         comision_porcentaje: data.comision_porcentaje,
         activo: data.activo,
-        telefono: data.telefono
+        telefono: data.telefono,
+        permisos: data.permisos
       }
     });
   } catch (error) {
@@ -269,7 +306,7 @@ export const getAllUsers = async (req: Request, res: Response) => {
 
     const { data: users, error } = await supabase
       .from('users')
-      .select('id, email, nombre, apellido, telefono, rol, comision_porcentaje, activo, fecha_registro, ultimo_acceso')
+      .select('id, email, nombre, apellido, telefono, rol, comision_porcentaje, activo, permisos, fecha_registro, ultimo_acceso')
       .eq('tenant_id', tenantId)
       .order('fecha_registro', { ascending: false });
 

@@ -271,7 +271,8 @@ export const getCotizaciones = async (req: Request, res: Response) => {
             .select('*')
             .eq('tenant_id', tenantId);
         
-        if (user.role !== 'admin') {
+        // Filter by seller unless admin or has permission to see all quotes
+        if (user.role !== 'admin' && user.permisos?.ver_todas_cotizaciones !== true) {
             query = query.eq('vendedor_id', user.userId);
         }
 
