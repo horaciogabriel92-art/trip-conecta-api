@@ -19,7 +19,7 @@ export const getComisionesPendientes = async (req: Request, res: Response) => {
             .from('ventas')
             .select(`
                 *,
-                vendedor:vendedor_id (nombre, apellido, email)
+                vendedor:vendedor_id (id, nombre, apellido, email)
             `)
             .eq('tenant_id', tenantId)
             .eq('comision_estado', 'pendiente')
