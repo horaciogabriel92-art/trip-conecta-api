@@ -239,13 +239,71 @@ export const cancelSubscription = async (req: Request, res: Response) => {
 };
 
 /**
+ * Busca un tenant por customer_id o subscription_id de Stripe.
+ */
+async function findTenantByStripeIds(stripeInvoice: any): Promise<{ id: string; plan_slug?: string } | null> {
+  const customerId = typeof stripeInvoice.customer === 'string' ? stripeInvoice.customer : undefined;
+  const subscriptionId = typeof stripeInvoice.subscription === 'string' ? stripeInvoice.subscription : undefined;
+
+  if (customerId) {
+    const { data: tenant, error } = await supabase
+      .from('tenants')
+      .select('id, plans:plan_id(slug)')
+      .eq('stripe_customer_id', customerId)
+      .maybeSingle();
+
+    if (!error && tenant) {
+      const plans = Array.isArray(tenant.plans) ? tenant.plans : [tenant.plans];
+      return {
+        id: tenant.id,
+        plan_slug: plans[0]?.slug,
+      };
+    }
+  }
+
+  if (subscriptionId) {
+    const { data: tenant, error } = await supabase
+      .from('tenants')
+      .select('id, plans:plan_id(slug)')
+      .eq('stripe_subscription_id', subscriptionId)
+      .maybeSingle();
+
+    if (!error && tenant) {
+      const plans = Array.isArray(tenant.plans) ? tenant.plans : [tenant.plans];
+      return {
+        id: tenant.id,
+        plan_slug: plans[0]?.slug,
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
  * Guarda o actualiza un invoice local a partir de un Stripe Invoice.
  */
 async function upsertInvoiceFromStripe(
-  tenantId: string,
+  tenantId: string | null | undefined,
   stripeInvoice: any,
   planSlug?: string
 ) {
+  let resolvedTenantId = tenantId;
+  let resolvedPlanSlug = planSlug;
+
+  if (!resolvedTenantId) {
+    const tenant = await findTenantByStripeIds(stripeInvoice);
+    if (tenant) {
+      resolvedTenantId = tenant.id;
+      resolvedPlanSlug = resolvedPlanSlug || tenant.plan_slug;
+    }
+  }
+
+  if (!resolvedTenantId) {
+    console.warn('[billing] No se pudo determinar tenant para invoice:', stripeInvoice.id);
+    return;
+  }
+
   const existing = await supabase
     .from('invoices')
     .select('id')
@@ -253,9 +311,9 @@ async function upsertInvoiceFromStripe(
     .maybeSingle();
 
   const invoiceData = {
-    tenant_id: tenantId,
-    stripe_customer_id: stripeInvoice.customer as string,
-    stripe_subscription_id: stripeInvoice.subscription as string | undefined,
+    tenant_id: resolvedTenantId,
+    stripe_customer_id: typeof stripeInvoice.customer === 'string' ? stripeInvoice.customer : undefined,
+    stripe_subscription_id: typeof stripeInvoice.subscription === 'string' ? stripeInvoice.subscription : undefined,
     stripe_invoice_id: stripeInvoice.id,
     stripe_payment_intent_id: typeof stripeInvoice.payment_intent === 'string' ? stripeInvoice.payment_intent : undefined,
     amount_subtotal_usd: (stripeInvoice.subtotal || 0) / 100,
@@ -265,7 +323,7 @@ async function upsertInvoiceFromStripe(
     billing_reason: stripeInvoice.billing_reason,
     period_start: stripeInvoice.period_start ? new Date(stripeInvoice.period_start * 1000).toISOString() : undefined,
     period_end: stripeInvoice.period_end ? new Date(stripeInvoice.period_end * 1000).toISOString() : undefined,
-    plan_slug: planSlug,
+    plan_slug: resolvedPlanSlug,
     description: stripeInvoice.description || `Pago de suscripción`,
     paid_at: stripeInvoice.status === 'paid' ? new Date().toISOString() : undefined,
   };
@@ -376,9 +434,7 @@ export const webhook = async (req: Request, res: Response) => {
         const tenantId = invoice.subscription_details?.metadata?.tenant_id || invoice.metadata?.tenant_id;
         const planSlug = invoice.subscription_details?.metadata?.plan_slug || invoice.metadata?.plan_slug;
 
-        if (tenantId) {
-          await upsertInvoiceFromStripe(tenantId, invoice, planSlug);
-        }
+        await upsertInvoiceFromStripe(tenantId, invoice, planSlug);
 
         if (invoice.subscription) {
           const subscription = await getSubscription(invoice.subscription as string);
