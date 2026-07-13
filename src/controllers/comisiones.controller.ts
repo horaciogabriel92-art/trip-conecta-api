@@ -115,35 +115,56 @@ export const registrarPagoComision = async (req: Request, res: Response) => {
             return res.status(403).json({ error: 'Módulo de comisiones no habilitado' });
         }
 
+        // Validación de inputs
+        if (!vendedor_id) {
+            return res.status(400).json({ error: 'vendedor_id es requerido' });
+        }
+        if (!Array.isArray(ventas_ids) || ventas_ids.length === 0) {
+            return res.status(400).json({ error: 'ventas_ids debe ser un array no vacío' });
+        }
+
         // Calcular monto total
         const { data: ventas, error: ventasError } = await supabase
             .from('ventas')
-            .select('comision_monto')
+            .select('id, comision_monto')
             .eq('tenant_id', tenantId)
             .in('id', ventas_ids)
             .eq('comision_estado', 'pendiente');
 
-        if (ventasError) throw ventasError;
+        if (ventasError) {
+            console.error('[registrarPagoComision] Error consultando ventas:', ventasError);
+            return res.status(500).json({ error: 'Error consultando ventas', details: ventasError.message });
+        }
 
-        const monto_total = ventas?.reduce((sum, v) => sum + v.comision_monto, 0) || 0;
+        if (!ventas || ventas.length === 0) {
+            return res.status(400).json({ error: 'No se encontraron ventas pendientes con los IDs proporcionados' });
+        }
+
+        const monto_total = ventas.reduce((sum, v) => sum + Number(v.comision_monto || 0), 0);
 
         // Crear registros de pago para cada venta
-        const pagosInsert = ventas_ids.map((venta_id: string) => ({
-            vendedor_id,
-            venta_id,
-            monto: ventas?.find((v: any) => v.id === venta_id)?.comision_monto || 0,
-            metodo_pago,
-            referencia_pago,
-            pagado_por: admin_id,
-            notas,
-            tenant_id: tenantId
-        }));
+        const pagosInsert = ventas_ids.map((venta_id: string) => {
+            const venta = ventas.find((v: any) => v.id === venta_id);
+            return {
+                vendedor_id,
+                venta_id,
+                monto: Number(venta?.comision_monto || 0),
+                metodo_pago: metodo_pago || null,
+                referencia_pago: referencia_pago || null,
+                pagado_por: admin_id,
+                notas: notas || null,
+                tenant_id: tenantId
+            };
+        });
 
         const { error: pagoError } = await supabase
             .from('pagos_comisiones')
             .insert(pagosInsert);
 
-        if (pagoError) throw pagoError;
+        if (pagoError) {
+            console.error('[registrarPagoComision] Error insertando pagos_comisiones:', pagoError);
+            return res.status(500).json({ error: 'Error registrando el pago', details: pagoError.message });
+        }
 
         // Actualizar estado de ventas
         const { error: updateError } = await supabase
@@ -155,16 +176,19 @@ export const registrarPagoComision = async (req: Request, res: Response) => {
             .eq('tenant_id', tenantId)
             .in('id', ventas_ids);
 
-        if (updateError) throw updateError;
+        if (updateError) {
+            console.error('[registrarPagoComision] Error actualizando ventas:', updateError);
+            return res.status(500).json({ error: 'Pago registrado pero error al actualizar ventas', details: updateError.message });
+        }
 
         res.status(201).json({ 
             message: 'Pago registrado correctamente',
             cantidad_ventas: ventas_ids.length,
             monto_total
         });
-    } catch (error) {
-        console.error('Error registering commission payment:', error);
-        res.status(500).json({ error: 'Internal server error' });
+    } catch (error: any) {
+        console.error('[registrarPagoComision] Error inesperado:', error);
+        res.status(500).json({ error: 'Internal server error', details: error?.message || String(error) });
     }
 };
 
