@@ -8,12 +8,18 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = process.env.EMAIL_FROM || 'onboarding@resend.dev';
 const FROM_NAME = process.env.EMAIL_FROM_NAME || 'Quotixos';
 
+interface EmailAttachment {
+  filename: string;
+  content: Buffer;
+}
+
 interface EmailPayload {
   to: string | string[];
   subject: string;
   templateName: string;
   variables: Record<string, string | number>;
   metadata?: Record<string, any>;
+  attachments?: EmailAttachment[];
 }
 
 async function renderTemplate(templateName: string, variables: Record<string, string | number>): Promise<string> {
@@ -33,7 +39,7 @@ async function renderTemplate(templateName: string, variables: Record<string, st
 }
 
 export async function sendEmail(payload: EmailPayload): Promise<void> {
-  const { to, subject, templateName, variables, metadata } = payload;
+  const { to, subject, templateName, variables, metadata, attachments } = payload;
 
   try {
     const html = await renderTemplate(templateName, { ...variables, subject });
@@ -43,6 +49,10 @@ export async function sendEmail(payload: EmailPayload): Promise<void> {
       to: Array.isArray(to) ? to : [to],
       subject,
       html,
+      attachments: attachments?.map(a => ({
+        filename: a.filename,
+        content: a.content,
+      })),
     });
 
     // Log éxito

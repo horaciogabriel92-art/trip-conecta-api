@@ -3,6 +3,9 @@ import { supabase } from '../config/supabase';
 import { findComprobanteFile } from '../utils/fileSearch';
 import { getTenantId } from '../utils/tenant';
 import { checkFeatureEnabled, checkWorkflowMode } from '../utils/features';
+import { sendEmail } from '../services/email.service';
+import fs from 'fs/promises';
+import path from 'path';
 
 export const getVentas = async (req: Request, res: Response) => {
     const tenantId = getTenantId(req);
@@ -520,3 +523,150 @@ export const getEstadisticas = async (req: Request, res: Response) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 };
+
+
+export const enviarConfirmacion = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    const { voucherIds } = req.body;
+    const user = (req as any).user;
+
+    try {
+        // Obtener venta con cotización
+        const { data: venta, error: ventaError } = await supabase
+            .from('ventas')
+            .select('*, cotizaciones:cotizacion_id(*)')
+            .eq('tenant_id', tenantId)
+            .eq('id', id)
+            .single();
+
+        if (ventaError || !venta) {
+            return res.status(404).json({ error: 'Venta no encontrada' });
+        }
+
+        // Permisos
+        const { mode: workflowMode } = await checkWorkflowMode(req);
+        const esAdmin = user.role === 'admin';
+        const esVendedorDueño = venta.vendedor_id === user.userId;
+        const puedeEnviar = esAdmin || (workflowMode === 'vendedor_autoconfirma' && esVendedorDueño);
+
+        if (!puedeEnviar) {
+            return res.status(403).json({ error: 'No autorizado' });
+        }
+
+        const clienteEmail = venta.cliente_email;
+        if (!clienteEmail) {
+            return res.status(400).json({ error: 'La venta no tiene email de cliente' });
+        }
+
+        const cotizacion = (venta as any).cotizaciones;
+
+        // Vouchers a adjuntar
+        let vouchersQuery = supabase
+            .from('documentos_viaje')
+            .select('*')
+            .eq('tenant_id', tenantId)
+            .eq('venta_id', id);
+
+        if (Array.isArray(voucherIds) && voucherIds.length > 0) {
+            vouchersQuery = vouchersQuery.in('id', voucherIds);
+        }
+
+        const { data: vouchers, error: vouchersError } = await vouchersQuery;
+
+        if (vouchersError) {
+            console.error('Error obteniendo vouchers:', vouchersError);
+            return res.status(500).json({ error: 'Error al obtener vouchers' });
+        }
+
+        // Preparar adjuntos
+        const attachments: { filename: string; content: Buffer }[] = [];
+        const uploadDir = process.env.STORAGE_PATH || './storage/uploads';
+
+        for (const v of vouchers || []) {
+            const filePath = path.join(uploadDir, 'vouchers', v.ruta_archivo);
+            try {
+                const content = await fs.readFile(filePath);
+                attachments.push({ filename: v.nombre_archivo, content });
+            } catch (e) {
+                console.warn(`No se pudo leer voucher ${v.id}:`, e);
+            }
+        }
+
+        // Renderizar HTML de confirmación
+        const htmlConfirmacion = renderConfirmacionHtml(venta, cotizacion);
+
+        await sendEmail({
+            to: clienteEmail,
+            subject: `Confirmación de tu viaje - ${venta.codigo}`,
+            templateName: 'confirmacion-viaje',
+            variables: {
+                subject: `Confirmación de tu viaje - ${venta.codigo}`,
+                contenidoHtml: htmlConfirmacion,
+                clienteNombre: venta.cliente_nombre || 'Cliente',
+                codigoVenta: venta.codigo,
+                paqueteNombre: venta.paquete_nombre || 'Viaje personalizado',
+            },
+            metadata: { tipo: 'confirmacion_viaje', venta_id: id, cotizacion_id: venta.cotizacion_id },
+            attachments,
+        });
+
+        // Registrar en historial del cliente
+        if (cotizacion?.cliente_id) {
+            await supabase.from('historial_cliente').insert({
+                cliente_id: cotizacion.cliente_id,
+                tipo: 'confirmacion_enviada',
+                venta_id: id,
+                cotizacion_id: venta.cotizacion_id,
+                descripcion: `Confirmación de viaje enviada por email a ${clienteEmail}`,
+                realizado_por: user.userId,
+                realizado_por_nombre: user.nombre || user.email || 'Usuario',
+                tenant_id: tenantId,
+            });
+        }
+
+        res.json({ message: 'Confirmación enviada correctamente', adjuntos: attachments.length });
+    } catch (error: any) {
+        console.error('Error enviando confirmación:', error);
+        res.status(500).json({ error: 'Error al enviar confirmación', details: error.message });
+    }
+};
+
+function renderConfirmacionHtml(venta: any, cotizacion: any): string {
+    const pasajeros = cotizacion?.num_pasajeros || venta.num_pasajeros || 1;
+    const fechaSalida = venta.fecha_salida
+        ? new Date(venta.fecha_salida).toLocaleDateString('es-AR')
+        : 'A definir';
+
+    return `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1f2937;">
+            <h2 style="color: #0ea5e9;">¡Tu viaje está confirmado!</h2>
+            <p>Hola ${venta.cliente_nombre || ''},</p>
+            <p>Te confirmamos tu viaje con los siguientes datos:</p>
+            <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #e5e7eb; background: #f9fafb; font-weight: bold;">Código</td>
+                    <td style="padding: 10px; border: 1px solid #e5e7eb;">${venta.codigo}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #e5e7eb; background: #f9fafb; font-weight: bold;">Paquete</td>
+                    <td style="padding: 10px; border: 1px solid #e5e7eb;">${venta.paquete_nombre || 'Viaje personalizado'}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #e5e7eb; background: #f9fafb; font-weight: bold;">Pasajeros</td>
+                    <td style="padding: 10px; border: 1px solid #e5e7eb;">${pasajeros}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #e5e7eb; background: #f9fafb; font-weight: bold;">Fecha de salida</td>
+                    <td style="padding: 10px; border: 1px solid #e5e7eb;">${fechaSalida}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #e5e7eb; background: #f9fafb; font-weight: bold;">Total</td>
+                    <td style="padding: 10px; border: 1px solid #e5e7eb;">$${venta.precio_total}</td>
+                </tr>
+            </table>
+            <p>Adjuntamos los vouchers/documentos correspondientes. Guardalos y presentalos en el momento del viaje.</p>
+            <p style="color: #6b7280; font-size: 12px;">Este email fue generado automáticamente desde Trip Conecta.</p>
+        </div>
+    `;
+}
