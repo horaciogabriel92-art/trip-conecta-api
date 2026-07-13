@@ -70,6 +70,8 @@ import jobsRoutes from './routes/jobs.routes';
 import reportesRoutes from './routes/reportes.routes';
 import recordatoriosRoutes from './routes/recordatorios.routes';
 import configRoutes from './routes/config.routes';
+import billingRoutes from './routes/billing.routes';
+import { webhook as stripeWebhook } from './controllers/billing.controller';
 app.use('/api/auth', express.json(), authRoutes);
 app.use('/api/register', express.json(), registerRoutes);
 app.use('/api/admin', express.json(), adminRoutes);
@@ -85,6 +87,10 @@ app.use('/api/upload', uploadRoutes); // Sin express.json() - usa multipart
 app.use('/api/jobs', express.json(), jobsRoutes);
 app.use('/api/reportes', express.json(), reportesRoutes);
 app.use('/api/config', express.json(), configRoutes);
+
+// Stripe webhook necesita body raw para validar firma
+app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), stripeWebhook);
+app.use('/api/billing', express.json(), billingRoutes);
 
 // Health check con verificación de Supabase
 app.get('/api/health', async (req, res) => {

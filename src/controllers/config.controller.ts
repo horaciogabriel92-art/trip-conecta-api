@@ -35,6 +35,9 @@ interface TenantConfig {
   trial_ends_at: string | null;
   estado_suscripcion: string | null;
   plan_started_at: string | null;
+  stripe_customer_id?: string | null;
+  stripe_subscription_id?: string | null;
+  extra_users_billed?: number;
   configuracion: Record<string, any>;
   plan: PlanConfig | null;
 }
@@ -76,6 +79,7 @@ const QUOTIX_TRAVEL_CONFIG: TenantConfig = {
 const TENANT_SELECT = `
   id, nombre, slug, logo_url, color_primario, color_secundario, dominio,
   trial_ends_at, estado_suscripcion, plan_started_at, configuracion,
+  stripe_customer_id, stripe_subscription_id, extra_users_billed,
   plans:plan_id (slug, nombre, max_users, max_cotizaciones_por_mes, max_paquetes, permite_dominio_propio, precio_mensual_usd, precio_usuario_extra_usd, features)
 `;
 
@@ -106,6 +110,9 @@ function formatTenantResponse(tenant: any): TenantConfig {
     trial_ends_at: tenant.trial_ends_at || null,
     estado_suscripcion: tenant.estado_suscripcion || null,
     plan_started_at: tenant.plan_started_at || null,
+    stripe_customer_id: tenant.stripe_customer_id || null,
+    stripe_subscription_id: tenant.stripe_subscription_id || null,
+    extra_users_billed: tenant.extra_users_billed || 0,
     configuracion: tenant.configuracion || QUOTIX_TRAVEL_CONFIG.configuracion,
     plan: normalizePlan(tenant.plans)
   };

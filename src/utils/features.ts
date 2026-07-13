@@ -16,6 +16,16 @@ export interface PlanConfig {
   [key: string]: any;
 }
 
+const FREE_PLAN: PlanConfig = {
+  slug: 'free',
+  nombre: 'Free',
+  features: {
+    comisiones: false,
+    vendedor_autoconfirma: false,
+    dominio_propio: false
+  }
+};
+
 export interface TenantConfiguracion {
   features?: {
     comisiones?: { enabled?: boolean };
@@ -33,6 +43,21 @@ export interface TenantConfiguracion {
 export function planAllows(plan: PlanConfig | null | undefined, feature: string): boolean {
   if (!plan) return false;
   return plan.features?.[feature] === true;
+}
+
+/**
+ * Devuelve el plan efectivo considerando el estado de suscripción.
+ * Si el tenant está suspendido o cancelado, se comporta como plan Free.
+ */
+export function getEffectivePlan(
+  plan: PlanConfig | null | undefined,
+  estadoSuscripcion: string | null | undefined
+): PlanConfig | null {
+  if (!plan) return FREE_PLAN;
+  if (estadoSuscripcion === 'suspendido' || estadoSuscripcion === 'cancelado') {
+    return FREE_PLAN;
+  }
+  return plan;
 }
 
 /**
@@ -97,7 +122,7 @@ export async function checkFeatureEnabled(
   const tenantId = getTenantId(req);
   const { data: tenant, error } = await supabase
     .from('tenants')
-    .select('configuracion, plans:plan_id(features)')
+    .select('configuracion, estado_suscripcion, plans:plan_id(features)')
     .eq('id', tenantId)
     .single();
 
@@ -106,7 +131,7 @@ export async function checkFeatureEnabled(
     return { enabled: false, allowed: false };
   }
 
-  const plan = normalizePlan(tenant.plans);
+  const plan = getEffectivePlan(normalizePlan(tenant.plans), tenant.estado_suscripcion);
   const configuracion = tenant.configuracion;
 
   return {
@@ -128,7 +153,7 @@ export async function checkWorkflowMode(
   const tenantId = getTenantId(req);
   const { data: tenant, error } = await supabase
     .from('tenants')
-    .select('configuracion, plans:plan_id(slug, features)')
+    .select('configuracion, estado_suscripcion, plans:plan_id(slug, features)')
     .eq('id', tenantId)
     .single();
 
@@ -137,7 +162,7 @@ export async function checkWorkflowMode(
     return { mode: 'admin_confirma', canVendedorAutoconfirmar: false, isSimple: false };
   }
 
-  const plan = normalizePlan(tenant.plans);
+  const plan = getEffectivePlan(normalizePlan(tenant.plans), tenant.estado_suscripcion);
   const configuracion = tenant.configuracion;
   const mode = getWorkflowMode(configuracion);
 
