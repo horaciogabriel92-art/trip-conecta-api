@@ -278,7 +278,7 @@ export const getPublicPlans = async (req: Request, res: Response) => {
   try {
     const { data: plans, error } = await supabase
       .from('plans')
-      .select('slug, nombre, max_users, max_cotizaciones_por_mes, max_paquetes, permite_dominio_propio, precio_mensual_usd, precio_usuario_extra_usd, features')
+      .select('slug, nombre, description, max_users, max_cotizaciones_por_mes, max_paquetes, permite_dominio_propio, precio_mensual_usd, precio_usuario_extra_usd, features')
       .eq('activo', true)
       .order('precio_mensual_usd', { ascending: true });
 
