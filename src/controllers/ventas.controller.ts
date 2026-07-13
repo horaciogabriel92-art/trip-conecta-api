@@ -11,8 +11,11 @@ export const getVentas = async (req: Request, res: Response) => {
     const tenantId = getTenantId(req);
     const user = (req as any).user;
     try {
-        let query = supabase.from('ventas').select('*').eq('tenant_id', tenantId);
-        
+        let query = supabase
+            .from('ventas')
+            .select('*, cotizaciones:cotizacion_id(*)')
+            .eq('tenant_id', tenantId);
+
         // Filter by seller unless admin or has permission to see all sales
         if (user.role !== 'admin' && user.permisos?.ver_todas_ventas !== true) {
             query = query.eq('vendedor_id', user.userId);
@@ -22,7 +25,27 @@ export const getVentas = async (req: Request, res: Response) => {
             .order('fecha_creacion', { ascending: false });
 
         if (error) throw error;
-        res.json(ventas);
+
+        const ventasFormateadas = (ventas || []).map((venta: any) => {
+            // Supabase puede devolver la relación como objeto o array según constraints
+            const cotizacionRaw = venta.cotizaciones;
+            const cotizacion = Array.isArray(cotizacionRaw)
+                ? cotizacionRaw[0]
+                : (cotizacionRaw || {});
+            return {
+                ...venta,
+                cotizacion_id: cotizacion?.id || venta.cotizacion_id,
+                cotizacion_codigo: cotizacion?.codigo || null,
+                cotizacion_estado: cotizacion?.estado || null,
+                cliente_nombre: venta.cliente_nombre || cotizacion?.cliente_nombre || null,
+                cliente_email: venta.cliente_email || cotizacion?.cliente_email || null,
+                paquete_nombre: venta.paquete_nombre || cotizacion?.paquete_nombre || null,
+                // Limpiar objeto anidado para no duplicar payload
+                cotizaciones: undefined,
+            };
+        });
+
+        res.json(ventasFormateadas);
     } catch (error) {
         console.error('Error fetching sales:', error);
         res.status(500).json({ error: 'Internal server error' });
