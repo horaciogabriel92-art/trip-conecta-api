@@ -859,7 +859,7 @@ export const convertirAVenta = async (req: Request, res: Response) => {
                 tenant_id: tenantId,
                 comision_porcentaje: 0,
                 comision_monto: comisionesHabilitadas ? (cotizacion.comision_vendedor || 0) : 0,
-                estado: 'pendiente',  // Inicialmente pendiente hasta que admin suba vouchers
+                estado: (workflowMode === 'vendedor_autoconfirma' && pago_realizado) ? 'confirmada' : 'pendiente',
                 notas: notasVenta || null,
                 metodo_pago: medio_pago || null,
                 // Campos heredados de pago

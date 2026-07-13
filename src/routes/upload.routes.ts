@@ -6,6 +6,7 @@ import path from 'path';
 import fs from 'fs';
 import { findComprobanteFile } from '../utils/fileSearch';
 import { getTenantId } from '../utils/tenant';
+import { checkWorkflowMode } from '../utils/features';
 
 const router = Router();
 
@@ -570,7 +571,7 @@ const uploadVoucher = multer({
   }
 });
 
-// POST /api/upload/voucher/:ventaId - Subir voucher (admin only)
+// POST /api/upload/voucher/:ventaId - Subir voucher
 router.post('/voucher/:ventaId', authenticateToken, uploadVoucher.single('voucher'), async (req, res) => {
   const tenantId = getTenantId(req);
   try {
@@ -578,30 +579,36 @@ router.post('/voucher/:ventaId', authenticateToken, uploadVoucher.single('vouche
     const userId = (req as any).user.userId;
     const userRole = (req as any).user.role;
     const { tipo_documento, descripcion, comision_monto } = req.body;
-    
-    // Solo admin puede subir vouchers
-    if (userRole !== 'admin') {
-      if (req.file && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      }
-      return res.status(403).json({ error: 'Solo administradores pueden subir vouchers' });
-    }
-    
-    if (!req.file) {
-      return res.status(400).json({ error: 'No se proporcionó ningún archivo' });
-    }
-    
-    // Verificar que la venta existe
+
+    // Verificar que la venta existe y permisos
     const { data: venta, error: ventaError } = await supabase
       .from('ventas')
-      .select('id, cotizacion_id')
+      .select('id, cotizacion_id, vendedor_id')
       .eq('tenant_id', tenantId)
       .eq('id', ventaId)
       .single();
-    
+
     if (ventaError || !venta) {
-      fs.unlinkSync(req.file.path);
+      if (req.file && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
       return res.status(404).json({ error: 'Venta no encontrada' });
+    }
+
+    const { mode: workflowMode } = await checkWorkflowMode(req);
+    const esAdmin = userRole === 'admin';
+    const esVendedorDueño = venta.vendedor_id === userId;
+    const puedeSubir = esAdmin || (workflowMode === 'vendedor_autoconfirma' && esVendedorDueño);
+
+    if (!puedeSubir) {
+      if (req.file && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+      return res.status(403).json({ error: 'No autorizado para subir vouchers' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No se proporcionó ningún archivo' });
     }
     
     // Guardar en BD
@@ -625,8 +632,8 @@ router.post('/voucher/:ventaId', authenticateToken, uploadVoucher.single('vouche
       return res.status(500).json({ error: 'Error al guardar voucher', details: insertError.message });
     }
     
-    // ACTUALIZAR COMISIÓN SI SE PROPORCIONÓ
-    const comisionNum = comision_monto !== undefined && comision_monto !== '' ? Number(comision_monto) : NaN;
+    // ACTUALIZAR COMISIÓN SI SE PROPORCIONÓ (solo admin)
+    const comisionNum = esAdmin && comision_monto !== undefined && comision_monto !== '' ? Number(comision_monto) : NaN;
     if (!isNaN(comisionNum) && comisionNum >= 0) {
       await supabase
         .from('ventas')
@@ -794,30 +801,35 @@ router.get('/voucher/:id/download', authenticateToken, async (req, res) => {
   }
 });
 
-// DELETE /api/upload/voucher/:id - Eliminar voucher (admin only)
+// DELETE /api/upload/voucher/:id - Eliminar voucher
 router.delete('/voucher/:id', authenticateToken, async (req, res) => {
   const tenantId = getTenantId(req);
   try {
     const { id } = req.params;
+    const userId = (req as any).user.userId;
     const userRole = (req as any).user.role;
-    
-    // Solo admin puede eliminar
-    if (userRole !== 'admin') {
-      return res.status(403).json({ error: 'Solo administradores pueden eliminar vouchers' });
-    }
-    
-    // Obtener voucher
+
+    // Obtener voucher con venta para validar dueño
     const { data: voucher, error } = await supabase
       .from('documentos_viaje')
-      .select('*')
+      .select('*, ventas!inner(vendedor_id)')
       .eq('tenant_id', tenantId)
       .eq('id', id)
       .single();
-    
+
     if (error || !voucher) {
       return res.status(404).json({ error: 'Voucher no encontrado' });
     }
-    
+
+    const { mode: workflowMode } = await checkWorkflowMode(req);
+    const esAdmin = userRole === 'admin';
+    const esVendedorDueño = (voucher.ventas as any)?.vendedor_id === userId;
+    const puedeEliminar = esAdmin || (workflowMode === 'vendedor_autoconfirma' && esVendedorDueño);
+
+    if (!puedeEliminar) {
+      return res.status(403).json({ error: 'No autorizado para eliminar vouchers' });
+    }
+
     // Eliminar archivo físico
     const uploadDir = process.env.STORAGE_PATH || './storage/uploads';
     const filePath = path.join(uploadDir, 'vouchers', voucher.ruta_archivo);

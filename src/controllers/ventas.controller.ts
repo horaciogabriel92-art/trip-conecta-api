@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { findComprobanteFile } from '../utils/fileSearch';
 import { getTenantId } from '../utils/tenant';
-import { checkFeatureEnabled } from '../utils/features';
+import { checkFeatureEnabled, checkWorkflowMode } from '../utils/features';
 
 export const getVentas = async (req: Request, res: Response) => {
     const tenantId = getTenantId(req);
@@ -248,8 +248,24 @@ export const updateEstadoVenta = async (req: Request, res: Response) => {
     const user = (req as any).user;
     
     try {
-        // Solo admin puede cambiar estado
-        if (user.role !== 'admin') {
+        // Obtener venta para validar permisos
+        const { data: ventaActual, error: findError } = await supabase
+            .from('ventas')
+            .select('id, vendedor_id, cotizacion_id')
+            .eq('tenant_id', tenantId)
+            .eq('id', id)
+            .single();
+
+        if (findError || !ventaActual) {
+            return res.status(404).json({ error: 'Venta no encontrada' });
+        }
+
+        const { mode: workflowMode } = await checkWorkflowMode(req);
+        const esAdmin = user.role === 'admin';
+        const esVendedorDueño = ventaActual.vendedor_id === user.userId;
+        const puedeCambiarEstado = esAdmin || (workflowMode === 'vendedor_autoconfirma' && esVendedorDueño);
+
+        if (!puedeCambiarEstado) {
             return res.status(403).json({ error: 'No autorizado' });
         }
 
