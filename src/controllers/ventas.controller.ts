@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { findComprobanteFile } from '../utils/fileSearch';
+import { getComprobantePublicUrl } from '../utils/fileUrl';
 import { getTenantId } from '../utils/tenant';
 import { checkFeatureEnabled, checkWorkflowMode } from '../utils/features';
 import { sendEmail } from '../services/email.service';
@@ -114,7 +115,7 @@ export const getVentaById = async (req: Request, res: Response) => {
                     .filter((c: any) => !!findComprobanteFile(c.ruta_archivo))
                     .map((c: any) => ({
                         ...c,
-                        url: `/uploads/comprobantes/${c.ruta_archivo}`,
+                        url: getComprobantePublicUrl(c.ruta_archivo),
                         es_descargable: true
                     }));
             }

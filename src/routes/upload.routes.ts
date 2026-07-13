@@ -5,6 +5,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { findComprobanteFile } from '../utils/fileSearch';
+import { getComprobantePublicUrl } from '../utils/fileUrl';
 import { getTenantId } from '../utils/tenant';
 import { checkWorkflowMode } from '../utils/features';
 
@@ -196,7 +197,7 @@ router.post('/comprobante-pago/:cotizacionId', authenticateToken, uploadComproba
     }
 
     // Generar URL pública del archivo
-    const fileUrl = `/uploads/comprobantes/${req.file.filename}`;
+    const fileUrl = getComprobantePublicUrl(req.file.filename);
 
     res.json({
       message: 'Comprobante subido exitosamente',
@@ -261,7 +262,7 @@ router.get('/comprobantes-pago/:cotizacionId', authenticateToken, async (req, re
     // Agregar URLs públicas
     const comprobantesConUrl = comprobantes.map((c: any) => ({
       ...c,
-      url: `/uploads/comprobantes/${c.ruta_archivo}`
+      url: getComprobantePublicUrl(c.ruta_archivo)
     }));
 
     res.json(comprobantesConUrl);
@@ -280,19 +281,20 @@ router.get('/comprobante-pago/:id/download', authenticateToken, async (req, res)
     const userId = (req as any).user.userId;
     const userRole = (req as any).user.role;
 
-    // Obtener comprobante
+    // Obtener comprobante (sin relaciones embedded para evitar errores de FK/RLS)
     const { data: comprobante, error } = await supabase
       .from('comprobantes_pago')
-      .select('*, cotizaciones!inner(vendedor_id)')
+      .select('*')
       .eq('tenant_id', tenantId)
       .eq('id', id)
       .single();
 
     if (error || !comprobante) {
+      console.error('[Download Comprobante] Error BD:', error);
       return res.status(404).json({ error: 'Comprobante no encontrado' });
     }
 
-    // Verificar permisos
+    // Verificar permisos (la tabla comprobantes_pago ya tiene vendedor_id)
     if (userRole !== 'admin' && comprobante.vendedor_id !== userId) {
       return res.status(403).json({ error: 'No autorizado' });
     }
