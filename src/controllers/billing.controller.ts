@@ -14,6 +14,7 @@ const PRICE_IDS: Record<string, string | undefined> = {
   freelance: process.env.STRIPE_PRICE_ID_FREELANCE,
   'pro-agencia': process.env.STRIPE_PRICE_ID_PRO_AGENCIA,
   'pro-ilimitado': process.env.STRIPE_PRICE_ID_PRO_ILIMITADO,
+  test: process.env.STRIPE_PRICE_ID_TEST,
 };
 
 const EXTRA_USER_PRICE_ID = process.env.STRIPE_PRICE_ID_EXTRA_USER;
