@@ -170,6 +170,8 @@ export const getSubscriptionStatus = async (req: Request, res: Response) => {
         estado_suscripcion,
         plan_started_at,
         extra_users_billed,
+        subscription_renewal_date,
+        next_invoice_amount_usd,
         plans:plan_id (slug, nombre, precio_mensual_usd, precio_usuario_extra_usd)
       `)
       .eq('id', tenantId)
@@ -184,6 +186,8 @@ export const getSubscriptionStatus = async (req: Request, res: Response) => {
       estado_suscripcion: tenant.estado_suscripcion,
       plan_started_at: tenant.plan_started_at,
       extra_users_billed: tenant.extra_users_billed,
+      subscription_renewal_date: tenant.subscription_renewal_date,
+      next_invoice_amount_usd: tenant.next_invoice_amount_usd,
       plan: tenant.plans,
     });
   } catch (error: any) {
@@ -224,6 +228,8 @@ export const cancelSubscription = async (req: Request, res: Response) => {
     const updateData: any = {
       estado_suscripcion: 'cancelado',
       extra_users_billed: 0,
+      subscription_renewal_date: null,
+      next_invoice_amount_usd: null,
     };
     if (freePlan) {
       updateData.plan_id = freePlan.id;
@@ -242,9 +248,16 @@ export const cancelSubscription = async (req: Request, res: Response) => {
  * Busca un tenant por customer_id o subscription_id de Stripe.
  */
 async function findTenantByStripeIds(stripeInvoice: any): Promise<{ id: string; plan_slug?: string } | null> {
-  const customerId = typeof stripeInvoice.customer === 'string' ? stripeInvoice.customer : undefined;
-  const subscriptionId = typeof stripeInvoice.subscription === 'string' ? stripeInvoice.subscription : undefined;
+  return findTenantByStripeCustomerOrSubscription(
+    typeof stripeInvoice.customer === 'string' ? stripeInvoice.customer : undefined,
+    typeof stripeInvoice.subscription === 'string' ? stripeInvoice.subscription : undefined
+  );
+}
 
+async function findTenantByStripeCustomerOrSubscription(
+  customerId?: string,
+  subscriptionId?: string
+): Promise<{ id: string; plan_slug?: string } | null> {
   if (customerId) {
     const { data: tenant, error } = await supabase
       .from('tenants')
@@ -339,7 +352,16 @@ async function upsertInvoiceFromStripe(
  * Actualiza el tenant a partir de una suscripción de Stripe.
  */
 async function syncSubscription(subscription: any) {
-  const tenantId = subscription.metadata?.tenant_id;
+  let tenantId = subscription.metadata?.tenant_id;
+
+  if (!tenantId) {
+    const customerId = typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id;
+    const tenant = await findTenantByStripeCustomerOrSubscription(customerId, subscription.id);
+    if (tenant) {
+      tenantId = tenant.id;
+    }
+  }
+
   if (!tenantId) {
     console.warn('[billing] Subscription sin tenant_id:', subscription.id);
     return;
@@ -376,11 +398,25 @@ async function syncSubscription(subscription: any) {
     estadoSuscripcion = 'trial';
   }
 
+  // Calcular monto estimado de la próxima factura desde los items de Stripe.
+  let nextInvoiceAmount = 0;
+  if (Array.isArray(subscription.items?.data)) {
+    for (const item of subscription.items.data) {
+      const unitAmount = item.price?.unit_amount || 0;
+      const quantity = item.quantity || 1;
+      nextInvoiceAmount += (unitAmount * quantity) / 100;
+    }
+  }
+
   const updateData: any = {
     estado_suscripcion: estadoSuscripcion,
     stripe_subscription_id: subscription.id,
     stripe_customer_id: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id,
     extra_users_billed: extraUsers,
+    subscription_renewal_date: subscription.current_period_end
+      ? new Date(subscription.current_period_end * 1000).toISOString()
+      : null,
+    next_invoice_amount_usd: nextInvoiceAmount > 0 ? nextInvoiceAmount : null,
   };
 
   if (planId) {
