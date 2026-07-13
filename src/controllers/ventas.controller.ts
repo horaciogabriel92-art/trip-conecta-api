@@ -13,7 +13,7 @@ export const getVentas = async (req: Request, res: Response) => {
     try {
         let query = supabase
             .from('ventas')
-            .select('*, cotizaciones:cotizacion_id(*)')
+            .select('*')
             .eq('tenant_id', tenantId);
 
         // Filter by seller unless admin or has permission to see all sales
@@ -26,12 +26,32 @@ export const getVentas = async (req: Request, res: Response) => {
 
         if (error) throw error;
 
+        // Cargar cotizaciones asociadas en query separada para evitar problemas
+        // con relaciones embedded en Supabase según la configuración de FK/RLS.
+        let cotizacionesMap: Record<string, any> = {};
+        const cotizacionIds = (ventas || [])
+            .map((v: any) => v.cotizacion_id)
+            .filter(Boolean);
+
+        if (cotizacionIds.length > 0) {
+            const { data: cotizaciones, error: cotError } = await supabase
+                .from('cotizaciones')
+                .select('id, codigo, estado, cliente_nombre, cliente_email, paquete_nombre')
+                .eq('tenant_id', tenantId)
+                .in('id', cotizacionIds);
+
+            if (cotError) {
+                console.error('Error fetching cotizaciones for ventas:', cotError);
+            } else {
+                cotizacionesMap = (cotizaciones || []).reduce((acc: Record<string, any>, c: any) => {
+                    acc[c.id] = c;
+                    return acc;
+                }, {});
+            }
+        }
+
         const ventasFormateadas = (ventas || []).map((venta: any) => {
-            // Supabase puede devolver la relación como objeto o array según constraints
-            const cotizacionRaw = venta.cotizaciones;
-            const cotizacion = Array.isArray(cotizacionRaw)
-                ? cotizacionRaw[0]
-                : (cotizacionRaw || {});
+            const cotizacion = venta.cotizacion_id ? cotizacionesMap[venta.cotizacion_id] : null;
             return {
                 ...venta,
                 cotizacion_id: cotizacion?.id || venta.cotizacion_id,
@@ -40,8 +60,6 @@ export const getVentas = async (req: Request, res: Response) => {
                 cliente_nombre: venta.cliente_nombre || cotizacion?.cliente_nombre || null,
                 cliente_email: venta.cliente_email || cotizacion?.cliente_email || null,
                 paquete_nombre: venta.paquete_nombre || cotizacion?.paquete_nombre || null,
-                // Limpiar objeto anidado para no duplicar payload
-                cotizaciones: undefined,
             };
         });
 
@@ -555,10 +573,10 @@ export const enviarConfirmacion = async (req: Request, res: Response) => {
     const user = (req as any).user;
 
     try {
-        // Obtener venta con cotización
+        // Obtener venta
         const { data: venta, error: ventaError } = await supabase
             .from('ventas')
-            .select('*, cotizaciones:cotizacion_id(*)')
+            .select('*')
             .eq('tenant_id', tenantId)
             .eq('id', id)
             .single();
@@ -582,7 +600,22 @@ export const enviarConfirmacion = async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'La venta no tiene email de cliente' });
         }
 
-        const cotizacion = (venta as any).cotizaciones;
+        // Cargar cotización asociada en query separada
+        let cotizacion: any = null;
+        if (venta.cotizacion_id) {
+            const { data: cotData, error: cotError } = await supabase
+                .from('cotizaciones')
+                .select('*')
+                .eq('tenant_id', tenantId)
+                .eq('id', venta.cotizacion_id)
+                .single();
+
+            if (cotError) {
+                console.error('Error fetching cotizacion for confirmation:', cotError);
+            } else {
+                cotizacion = cotData;
+            }
+        }
 
         // Vouchers a adjuntar
         let vouchersQuery = supabase
