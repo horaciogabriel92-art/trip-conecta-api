@@ -809,10 +809,10 @@ router.delete('/voucher/:id', authenticateToken, async (req, res) => {
     const userId = (req as any).user.userId;
     const userRole = (req as any).user.role;
 
-    // Obtener voucher con venta para validar dueño
+    // Obtener voucher
     const { data: voucher, error } = await supabase
       .from('documentos_viaje')
-      .select('*, ventas!inner(vendedor_id)')
+      .select('*')
       .eq('tenant_id', tenantId)
       .eq('id', id)
       .single();
@@ -821,9 +821,17 @@ router.delete('/voucher/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Voucher no encontrado' });
     }
 
+    // Obtener venta para validar dueño
+    const { data: ventaVoucher } = await supabase
+      .from('ventas')
+      .select('vendedor_id')
+      .eq('tenant_id', tenantId)
+      .eq('id', voucher.venta_id)
+      .single();
+
     const { mode: workflowMode } = await checkWorkflowMode(req);
     const esAdmin = userRole === 'admin';
-    const esVendedorDueño = (voucher.ventas as any)?.vendedor_id === userId;
+    const esVendedorDueño = ventaVoucher?.vendedor_id === userId;
     const puedeEliminar = esAdmin || (workflowMode === 'vendedor_autoconfirma' && esVendedorDueño);
 
     if (!puedeEliminar) {
