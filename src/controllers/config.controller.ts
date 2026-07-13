@@ -274,20 +274,34 @@ export const updateTenantConfig = async (req: Request, res: Response) => {
   }
 };
 
+const PLANS_SELECT_FIELDS = 'slug, nombre, description, max_users, max_cotizaciones_por_mes, max_paquetes, permite_dominio_propio, precio_mensual_usd, precio_usuario_extra_usd, features';
+const PLANS_SELECT_FALLBACK_FIELDS = 'slug, nombre, max_users, max_cotizaciones_por_mes, max_paquetes, permite_dominio_propio, precio_mensual_usd, precio_usuario_extra_usd, features';
+
 export const getPublicPlans = async (req: Request, res: Response) => {
   try {
-    const { data: plans, error } = await supabase
+    const firstAttempt = await supabase
       .from('plans')
-      .select('slug, nombre, description, max_users, max_cotizaciones_por_mes, max_paquetes, permite_dominio_propio, precio_mensual_usd, precio_usuario_extra_usd, features')
+      .select(PLANS_SELECT_FIELDS)
       .eq('activo', true)
       .order('precio_mensual_usd', { ascending: true });
 
-    if (error) {
-      console.error('[config] Error fetching plans:', error);
+    // Fallback por si la migración que agrega `description` aún no se ejecutó.
+    let plansResult: any = firstAttempt;
+    if (firstAttempt.error && firstAttempt.error.message?.toLowerCase().includes('description')) {
+      console.warn('[config] Column description not found, retrying without it');
+      plansResult = await supabase
+        .from('plans')
+        .select(PLANS_SELECT_FALLBACK_FIELDS)
+        .eq('activo', true)
+        .order('precio_mensual_usd', { ascending: true });
+    }
+
+    if (plansResult.error) {
+      console.error('[config] Error fetching plans:', plansResult.error);
       return res.status(500).json({ error: 'Error al obtener los planes' });
     }
 
-    return res.json(plans || []);
+    return res.json(plansResult.data || []);
   } catch (err) {
     console.error('[config] Unexpected error fetching plans:', err);
     return res.status(500).json({ error: 'Error interno del servidor' });
