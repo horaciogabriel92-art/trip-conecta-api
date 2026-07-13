@@ -113,6 +113,22 @@ CREATE TABLE IF NOT EXISTS documentos_viaje (
 );
 
 -- ============================================
+-- TABLA: pagos_comisiones
+-- ============================================
+CREATE TABLE IF NOT EXISTS pagos_comisiones (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  vendedor_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  venta_id UUID NOT NULL REFERENCES ventas(id) ON DELETE CASCADE,
+  monto DECIMAL(12,2) NOT NULL CHECK (monto >= 0),
+  metodo_pago VARCHAR(100),
+  referencia_pago VARCHAR(255),
+  pagado_por UUID REFERENCES users(id),
+  notas TEXT,
+  tenant_id UUID NOT NULL,
+  fecha_pago TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- ============================================
 -- ÍNDICES
 -- ============================================
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -124,3 +140,7 @@ CREATE INDEX IF NOT EXISTS idx_cotizaciones_estado ON cotizaciones(estado);
 CREATE INDEX IF NOT EXISTS idx_ventas_vendedor ON ventas(vendedor_id);
 CREATE INDEX IF NOT EXISTS idx_ventas_estado ON ventas(estado);
 CREATE INDEX IF NOT EXISTS idx_documentos_venta ON documentos_viaje(venta_id);
+CREATE INDEX IF NOT EXISTS idx_pagos_comisiones_tenant ON pagos_comisiones(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_pagos_comisiones_vendedor ON pagos_comisiones(vendedor_id);
+CREATE INDEX IF NOT EXISTS idx_pagos_comisiones_venta ON pagos_comisiones(venta_id);
+CREATE INDEX IF NOT EXISTS idx_pagos_comisiones_fecha ON pagos_comisiones(fecha_pago);
