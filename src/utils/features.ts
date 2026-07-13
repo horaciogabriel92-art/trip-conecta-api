@@ -115,6 +115,39 @@ export async function checkFeatureEnabled(
   };
 }
 
+/**
+ * Consulta la BD para obtener el modo de trabajo del tenant actual.
+ */
+export async function checkWorkflowMode(
+  req: Request
+): Promise<{
+  mode: 'admin_confirma' | 'vendedor_autoconfirma' | 'simple';
+  canVendedorAutoconfirmar: boolean;
+  isSimple: boolean;
+}> {
+  const tenantId = getTenantId(req);
+  const { data: tenant, error } = await supabase
+    .from('tenants')
+    .select('configuracion, plans:plan_id(slug, features)')
+    .eq('id', tenantId)
+    .single();
+
+  if (error || !tenant) {
+    console.error('[features] Error fetching tenant for workflow mode:', error);
+    return { mode: 'admin_confirma', canVendedorAutoconfirmar: false, isSimple: false };
+  }
+
+  const plan = normalizePlan(tenant.plans);
+  const configuracion = tenant.configuracion;
+  const mode = getWorkflowMode(configuracion);
+
+  return {
+    mode,
+    canVendedorAutoconfirmar: vendedorPuedeAutoconfirmar(configuracion, plan),
+    isSimple: isSimpleWorkflow(configuracion, plan)
+  };
+}
+
 function normalizePlan(plan: any): PlanConfig | null {
   if (!plan) return null;
   return {

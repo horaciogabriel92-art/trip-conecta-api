@@ -5,7 +5,7 @@ import path from 'path';
 import { sendEmailAsync, getAdminEmails } from '../services/email.service';
 import { findComprobanteFile } from '../utils/fileSearch';
 import { getTenantId } from '../utils/tenant';
-import { checkFeatureEnabled } from '../utils/features';
+import { checkFeatureEnabled, checkWorkflowMode } from '../utils/features';
 
 export const createCotizacion = async (req: Request, res: Response) => {
     const { 
@@ -710,9 +710,18 @@ export const convertirAVenta = async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Cotización no encontrada' });
         }
 
-        // Verificar que sea del vendedor o admin
-        if (user.role !== 'admin' && cotizacion.vendedor_id !== user.userId) {
-            return res.status(403).json({ error: 'No autorizado' });
+        // Verificar permisos según metodología de trabajo
+        const { mode: workflowMode } = await checkWorkflowMode(req);
+        const esAdmin = user.role === 'admin';
+        const esVendedorDueño = cotizacion.vendedor_id === user.userId;
+        const puedeConvertir = esAdmin || (workflowMode === 'vendedor_autoconfirma' && esVendedorDueño);
+
+        if (!puedeConvertir) {
+            return res.status(403).json({
+                error: workflowMode === 'admin_confirma'
+                    ? 'Solo un administrador puede convertir cotizaciones en este modo'
+                    : 'No autorizado'
+            });
         }
 
         // Verificar si el módulo de comisiones está habilitado
