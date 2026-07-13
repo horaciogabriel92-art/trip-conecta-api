@@ -84,7 +84,7 @@ app.use('/api/recordatorios', express.json(), recordatoriosRoutes);
 app.use('/api/upload', uploadRoutes); // Sin express.json() - usa multipart
 app.use('/api/jobs', express.json(), jobsRoutes);
 app.use('/api/reportes', express.json(), reportesRoutes);
-app.use('/api/config', configRoutes);
+app.use('/api/config', express.json(), configRoutes);
 
 // Health check con verificación de Supabase
 app.get('/api/health', async (req, res) => {
