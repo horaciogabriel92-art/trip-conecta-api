@@ -165,6 +165,28 @@ export const getTenantConfig = async (req: Request, res: Response) => {
   }
 };
 
+export const getTenantConfigMe = async (req: Request, res: Response) => {
+  const tenantId = getTenantId(req);
+
+  try {
+    const { data: tenant, error } = await supabase
+      .from('tenants')
+      .select(TENANT_SELECT)
+      .eq('id', tenantId)
+      .single();
+
+    if (error || !tenant) {
+      console.error('[config] Error fetching tenant for authenticated user:', error);
+      return res.status(404).json({ error: 'Tenant no encontrado' });
+    }
+
+    return res.json(formatTenantResponse(tenant));
+  } catch (err) {
+    console.error('[config] Unexpected error fetching authenticated tenant:', err);
+    return res.status(500).json({ error: 'Error interno del servidor' });
+  }
+};
+
 export const updateTenantConfig = async (req: Request, res: Response) => {
   const tenantId = getTenantId(req);
   const user = (req as any).user;
