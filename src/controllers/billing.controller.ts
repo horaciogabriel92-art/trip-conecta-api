@@ -193,6 +193,52 @@ export const getSubscriptionStatus = async (req: Request, res: Response) => {
 };
 
 /**
+ * Cancela la suscripción activa de Stripe para el tenant.
+ */
+export const cancelSubscription = async (req: Request, res: Response) => {
+  const tenantId = getTenantId(req);
+  const user = (req as any).user;
+
+  try {
+    if (user.role !== 'admin') {
+      return res.status(403).json({ error: 'Solo administradores pueden cancelar la suscripción' });
+    }
+
+    const { data: tenant, error } = await supabase
+      .from('tenants')
+      .select('id, stripe_subscription_id, stripe_customer_id')
+      .eq('id', tenantId)
+      .single();
+
+    if (error || !tenant) {
+      return res.status(404).json({ error: 'Tenant no encontrado' });
+    }
+
+    if (!tenant.stripe_subscription_id) {
+      return res.status(400).json({ error: 'No hay una suscripción activa para cancelar' });
+    }
+
+    await stripe.subscriptions.cancel(tenant.stripe_subscription_id);
+
+    const freePlan = await getPlanBySlug('free');
+    const updateData: any = {
+      estado_suscripcion: 'cancelado',
+      extra_users_billed: 0,
+    };
+    if (freePlan) {
+      updateData.plan_id = freePlan.id;
+    }
+
+    await supabase.from('tenants').update(updateData).eq('id', tenantId);
+
+    res.json({ message: 'Suscripción cancelada correctamente' });
+  } catch (error: any) {
+    console.error('[billing] Error canceling subscription:', error);
+    res.status(500).json({ error: 'Error al cancelar suscripción', details: error.message });
+  }
+};
+
+/**
  * Guarda o actualiza un invoice local a partir de un Stripe Invoice.
  */
 async function upsertInvoiceFromStripe(
@@ -324,7 +370,8 @@ export const webhook = async (req: Request, res: Response) => {
         break;
       }
 
-      case 'invoice.paid': {
+      case 'invoice.paid':
+      case 'invoice.payment_succeeded': {
         const invoice = event.data.object as any;
         const tenantId = invoice.subscription_details?.metadata?.tenant_id || invoice.metadata?.tenant_id;
         const planSlug = invoice.subscription_details?.metadata?.plan_slug || invoice.metadata?.plan_slug;
@@ -353,6 +400,7 @@ export const webhook = async (req: Request, res: Response) => {
         break;
       }
 
+      case 'customer.subscription.created':
       case 'customer.subscription.updated':
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as any;

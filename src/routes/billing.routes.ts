@@ -5,6 +5,7 @@ import {
   createPortal,
   getInvoices,
   getSubscriptionStatus,
+  cancelSubscription,
 } from '../controllers/billing.controller';
 
 const router = Router();
@@ -14,5 +15,6 @@ router.post('/checkout', authenticateToken, createCheckout);
 router.post('/portal', authenticateToken, createPortal);
 router.get('/invoices', authenticateToken, getInvoices);
 router.get('/subscription', authenticateToken, getSubscriptionStatus);
+router.post('/cancel', authenticateToken, cancelSubscription);
 
 export default router;
