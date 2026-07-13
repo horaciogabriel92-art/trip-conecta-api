@@ -185,6 +185,10 @@ export const updateTenantConfig = async (req: Request, res: Response) => {
     }
 
     const plan = normalizePlan(tenant.plans);
+    if (!plan) {
+      console.error('[config] Could not normalize plan for tenant:', tenantId, 'plans:', tenant.plans);
+      return res.status(500).json({ error: 'Error al obtener el plan del tenant' });
+    }
 
     // Validate workflow mode against plan
     const requestedMode = configuracion.workflow?.mode;
@@ -226,13 +230,18 @@ export const updateTenantConfig = async (req: Request, res: Response) => {
 
     if (updateError) {
       console.error('[config] Error updating tenant config:', updateError);
+      return res.status(500).json({ error: 'Error al actualizar la configuración', details: updateError.message });
+    }
+
+    if (!updatedTenant) {
+      console.error('[config] updateTenantConfig returned no tenant after update');
       return res.status(500).json({ error: 'Error al actualizar la configuración' });
     }
 
     return res.json(formatTenantResponse(updatedTenant));
-  } catch (err) {
-    console.error('[config] Unexpected error updating tenant config:', err);
-    return res.status(500).json({ error: 'Error interno del servidor' });
+  } catch (err: any) {
+    console.error('[config] Unexpected error updating tenant config:', err?.message, err?.stack);
+    return res.status(500).json({ error: 'Error interno del servidor', details: err?.message });
   }
 };
 
