@@ -9,6 +9,14 @@ if (!JWT_SECRET) {
   throw new Error('❌ CRITICAL: JWT_SECRET environment variable is required');
 }
 
+const onboardingSchema = z.object({
+  tipo: z.enum(['freelance', 'agencia']),
+  vendedores: z.string().nullable().optional(),
+  pais: z.string().optional(),
+  tipo_viajes: z.string().optional(),
+  gds: z.string().optional(),
+});
+
 const registerSchema = z.object({
   nombre_agencia: z.string().min(2).max(100),
   slug: z.string().min(2).max(50).regex(/^[a-z0-9-]+$/, {
@@ -18,13 +26,14 @@ const registerSchema = z.object({
   password: z.string().min(8),
   nombre: z.string().min(2).max(100),
   apellido: z.string().min(2).max(100),
-  plan_slug: z.string().min(1)
+  plan_slug: z.string().min(1),
+  onboarding: onboardingSchema.optional()
 });
 
 export const register = async (req: Request, res: Response) => {
   try {
     const body = registerSchema.parse(req.body);
-    const { nombre_agencia, slug, email, password, nombre, apellido, plan_slug } = body;
+    const { nombre_agencia, slug, email, password, nombre, apellido, plan_slug, onboarding } = body;
 
     // Verificar que el slug del tenant no exista
     const { data: existingSlug, error: slugError } = await supabase
@@ -73,7 +82,8 @@ export const register = async (req: Request, res: Response) => {
         trial_ends_at: trialEndsAt.toISOString(),
         estado_suscripcion: 'trial',
         plan_started_at: new Date().toISOString(),
-        activo: true
+        activo: true,
+        configuracion: onboarding ? { onboarding } : undefined
       })
       .select('id, nombre, slug, trial_ends_at, estado_suscripcion, plan_started_at')
       .single();
