@@ -200,11 +200,12 @@ export const getSubscriptionStatus = async (req: Request, res: Response) => {
     // sincronizamos en el momento para mostrar datos actualizados.
     if (tenant.stripe_subscription_id && !tenant.subscription_renewal_date) {
       await refreshSubscriptionFromStripe(tenantId, tenant.stripe_subscription_id);
-      const { data: refreshedTenant } = await supabase
+      let { data: refreshedTenant } = await supabase
         .from('tenants')
         .select(`
           id,
           stripe_subscription_id,
+          stripe_customer_id,
           trial_ends_at,
           estado_suscripcion,
           plan_started_at,
@@ -215,6 +216,28 @@ export const getSubscriptionStatus = async (req: Request, res: Response) => {
         `)
         .eq('id', tenantId)
         .single();
+
+      // Fallback por si Stripe no devuelve current_period_end en la subscription:
+      // usamos la última invoice pagada para obtener el period_end.
+      if (refreshedTenant && !refreshedTenant.subscription_renewal_date) {
+        const { data: lastInvoice } = await supabase
+          .from('invoices')
+          .select('period_end')
+          .eq('tenant_id', tenantId)
+          .eq('status', 'paid')
+          .order('period_end', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (lastInvoice?.period_end) {
+          const renewalDate = new Date(lastInvoice.period_end).toISOString();
+          await supabase
+            .from('tenants')
+            .update({ subscription_renewal_date: renewalDate })
+            .eq('id', tenantId);
+          refreshedTenant = { ...refreshedTenant, subscription_renewal_date: renewalDate };
+        }
+      }
+
       if (refreshedTenant) {
         tenant = refreshedTenant;
       }
@@ -452,11 +475,12 @@ async function syncSubscription(subscription: any) {
     stripe_subscription_id: subscription.id,
     stripe_customer_id: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id,
     extra_users_billed: extraUsers,
-    subscription_renewal_date: subscription.current_period_end
-      ? new Date(subscription.current_period_end * 1000).toISOString()
-      : null,
     next_invoice_amount_usd: nextInvoiceAmount > 0 ? nextInvoiceAmount : null,
   };
+
+  if (subscription.current_period_end) {
+    updateData.subscription_renewal_date = new Date(subscription.current_period_end * 1000).toISOString();
+  }
 
   if (planId) {
     updateData.plan_id = planId;
