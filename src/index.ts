@@ -32,6 +32,8 @@ app.set('trust proxy', 1);
 const allowedOrigins = [
     'https://panel.tripconecta.com',
     'https://travel.quotixos.com',
+    'https://quotixos.com',
+    'https://www.quotixos.com',
     'http://localhost:3000'
 ];
 
