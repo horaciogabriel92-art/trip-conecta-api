@@ -8,7 +8,10 @@ export const sendPaymentReminders = async (req: Request, res: Response) => {
   const authHeader = req.headers['x-cron-secret'];
   const expectedSecret = process.env.CRON_SECRET;
 
-  if (expectedSecret && authHeader !== expectedSecret) {
+  if (!expectedSecret) {
+    return res.status(401).json({ error: 'CRON_SECRET not configured' });
+  }
+  if (authHeader !== expectedSecret) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -99,7 +102,10 @@ export const sendCotizacionVencimientoReminders = async (req: Request, res: Resp
   const authHeader = req.headers['x-cron-secret'];
   const expectedSecret = process.env.CRON_SECRET;
 
-  if (expectedSecret && authHeader !== expectedSecret) {
+  if (!expectedSecret) {
+    return res.status(401).json({ error: 'CRON_SECRET not configured' });
+  }
+  if (authHeader !== expectedSecret) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -177,7 +183,10 @@ export const sendSeguimientoReminders = async (req: Request, res: Response) => {
   const authHeader = req.headers['x-cron-secret'];
   const expectedSecret = process.env.CRON_SECRET;
 
-  if (expectedSecret && authHeader !== expectedSecret) {
+  if (!expectedSecret) {
+    return res.status(401).json({ error: 'CRON_SECRET not configured' });
+  }
+  if (authHeader !== expectedSecret) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 

@@ -478,65 +478,6 @@ router.get('/comprobantes-venta/:ventaId', authenticateToken, async (req, res) =
   }
 });
 
-// DEBUG: Endpoint para diagnosticar archivos de comprobantes (público temporalmente)
-router.get('/debug/comprobantes-files', async (req, res) => {
-  const tenantId = getTenantId(req);
-  try {
-
-    const results: any = {
-      env: {
-        STORAGE_PATH: process.env.STORAGE_PATH,
-        NODE_ENV: process.env.NODE_ENV,
-        cwd: process.cwd()
-      },
-      paths: [] as any[]
-    };
-
-    // Probar múltiples rutas posibles
-    const pathsToCheck = [
-      process.env.STORAGE_PATH || '/app/storage/uploads',
-      './storage/uploads',
-      '/data/trip-conecta/uploads',
-      '/app/storage/uploads',
-      path.join(process.cwd(), 'storage', 'uploads')
-    ];
-
-    for (const basePath of pathsToCheck) {
-      const comprobantesPath = path.join(basePath, 'comprobantes');
-      const pathInfo: any = {
-        basePath,
-        comprobantesPath,
-        baseExists: fs.existsSync(basePath),
-        comprobantesExists: fs.existsSync(comprobantesPath)
-      };
-
-      if (pathInfo.comprobantesExists) {
-        try {
-          const files = fs.readdirSync(comprobantesPath);
-          pathInfo.fileCount = files.length;
-          pathInfo.files = files.slice(0, 50); // Primeros 50 archivos
-        } catch (e: any) {
-          pathInfo.error = e.message;
-        }
-      }
-
-      results.paths.push(pathInfo);
-    }
-
-    // Verificar directorio raíz también
-    try {
-      results.rootDir = fs.readdirSync(process.cwd());
-    } catch (e: any) {
-      results.rootDirError = e.message;
-    }
-
-    res.json(results);
-  } catch (error: any) {
-    console.error('[Debug] Error:', error);
-    res.status(500).json({ error: 'Error interno', details: error.message });
-  }
-});
-
 // ============================================
 // VOUCHERS DE VIAJE (Documentos de viaje)
 // ============================================
