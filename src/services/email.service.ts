@@ -147,10 +147,10 @@ export async function sendBienvenidaRegistro(
   nombre: string,
   nombreAgencia: string,
   email: string,
-  password: string,
   planNombre: string,
   planPrecio: string,
-  linkPanel: string
+  linkPanel: string,
+  password?: string
 ) {
   return sendEmailAsync({
     to,
@@ -160,7 +160,7 @@ export async function sendBienvenidaRegistro(
       nombre,
       nombreAgencia,
       email,
-      password,
+      password: password || '',
       planNombre,
       planPrecio,
       linkPanel

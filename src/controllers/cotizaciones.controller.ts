@@ -1396,6 +1396,41 @@ export const updateCotizacion = async (req: Request, res: Response) => {
     const data = req.body;
     const user = (req as any).user;
 
+    // Campos que nunca se pueden actualizar por API
+    const forbiddenFields = ['id', 'tenant_id', 'codigo', 'created_at', 'updated_at'];
+
+    // Campos editables por vendedores (dueños de la cotización)
+    const vendedorAllowedFields = [
+        'nombre_cotizacion', 'cliente_id', 'pasajeros', 'servicios', 'precio_total',
+        'moneda', 'notas', 'fecha_expiracion', 'tipo_pago', 'monto_pagado',
+        'monto_restante', 'fecha_pago_resto', 'incluye_iva', 'cotizacion_pdf_url',
+        'comprobantes'
+    ];
+
+    // Campos editables solo por admin
+    const adminAllowedFields = [
+        ...vendedorAllowedFields,
+        'estado', 'vendedor_id', 'notas_admin', 'fecha_aprobacion', 'aprobada_por',
+        'ultimo_recordatorio_enviado'
+    ];
+
+    const allowedFields = user.role === 'admin' ? adminAllowedFields : vendedorAllowedFields;
+
+    // Filtrar campos permitidos y rechazar campos prohibidos
+    const updateData: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data)) {
+        if (forbiddenFields.includes(key)) {
+            return res.status(403).json({ error: `No se puede modificar el campo '${key}'` });
+        }
+        if (allowedFields.includes(key)) {
+            updateData[key] = value;
+        }
+    }
+
+    if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ error: 'No se proporcionaron campos válidos para actualizar' });
+    }
+
     try {
         // Verificar que sea del vendedor o admin
         if (user.role !== 'admin') {
@@ -1413,7 +1448,7 @@ export const updateCotizacion = async (req: Request, res: Response) => {
 
         const { data: cotizacion, error } = await supabase
             .from('cotizaciones')
-            .update(data)
+            .update(updateData)
             .eq('tenant_id', tenantId)
             .eq('id', id)
             .select()

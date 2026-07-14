@@ -95,7 +95,6 @@ export const register = async (req: Request, res: Response) => {
     }
 
     // Crear usuario admin
-    const plainPassword = password;
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const { data: user, error: userError } = await supabase
@@ -139,7 +138,6 @@ export const register = async (req: Request, res: Response) => {
       `${nombre} ${apellido}`,
       nombre_agencia,
       email,
-      plainPassword,
       plan.nombre,
       `US$ ${plan.precio_mensual_usd} / mes`,
       panelUrl
