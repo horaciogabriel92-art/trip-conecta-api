@@ -156,16 +156,31 @@ export const getInvoices = async (req: Request, res: Response) => {
 };
 
 /**
+ * Refresca los datos de una suscripción desde Stripe y guarda en DB.
+ */
+async function refreshSubscriptionFromStripe(tenantId: string, stripeSubscriptionId: string) {
+  try {
+    const subscription = await getSubscription(stripeSubscriptionId);
+    if (subscription) {
+      await syncSubscription(subscription);
+    }
+  } catch (err) {
+    console.error('[billing] Error refreshing subscription from Stripe:', err);
+  }
+}
+
+/**
  * Devuelve el estado actual de la suscripción del tenant.
  */
 export const getSubscriptionStatus = async (req: Request, res: Response) => {
   const tenantId = getTenantId(req);
 
   try {
-    const { data: tenant, error } = await supabase
+    let { data: tenant, error } = await supabase
       .from('tenants')
       .select(`
         id,
+        stripe_subscription_id,
         trial_ends_at,
         estado_suscripcion,
         plan_started_at,
@@ -179,6 +194,30 @@ export const getSubscriptionStatus = async (req: Request, res: Response) => {
 
     if (error || !tenant) {
       return res.status(404).json({ error: 'Tenant no encontrado' });
+    }
+
+    // Si tenemos suscripción en Stripe pero aún no hay fecha de renovación local,
+    // sincronizamos en el momento para mostrar datos actualizados.
+    if (tenant.stripe_subscription_id && !tenant.subscription_renewal_date) {
+      await refreshSubscriptionFromStripe(tenantId, tenant.stripe_subscription_id);
+      const { data: refreshedTenant } = await supabase
+        .from('tenants')
+        .select(`
+          id,
+          stripe_subscription_id,
+          trial_ends_at,
+          estado_suscripcion,
+          plan_started_at,
+          extra_users_billed,
+          subscription_renewal_date,
+          next_invoice_amount_usd,
+          plans:plan_id (slug, nombre, precio_mensual_usd, precio_usuario_extra_usd)
+        `)
+        .eq('id', tenantId)
+        .single();
+      if (refreshedTenant) {
+        tenant = refreshedTenant;
+      }
     }
 
     res.json({
