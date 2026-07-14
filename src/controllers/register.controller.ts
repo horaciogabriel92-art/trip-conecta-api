@@ -3,6 +3,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { supabase } from '../config/supabase';
+import { sendBienvenidaRegistro } from '../services/email.service';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -60,7 +61,7 @@ export const register = async (req: Request, res: Response) => {
     // Buscar el plan
     const { data: plan, error: planError } = await supabase
       .from('plans')
-      .select('id, slug, nombre')
+      .select('id, slug, nombre, precio_mensual_usd')
       .eq('slug', plan_slug)
       .eq('activo', true)
       .single();
@@ -94,6 +95,7 @@ export const register = async (req: Request, res: Response) => {
     }
 
     // Crear usuario admin
+    const plainPassword = password;
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const { data: user, error: userError } = await supabase
@@ -128,6 +130,19 @@ export const register = async (req: Request, res: Response) => {
       },
       JWT_SECRET,
       { expiresIn: '7d' }
+    );
+
+    // Enviar email de bienvenida (no bloqueante)
+    const panelUrl = process.env.PANEL_URL || 'https://travel.quotixos.com';
+    sendBienvenidaRegistro(
+      email,
+      `${nombre} ${apellido}`,
+      nombre_agencia,
+      email,
+      plainPassword,
+      plan.nombre,
+      `US$ ${plan.precio_mensual_usd} / mes`,
+      panelUrl
     );
 
     return res.status(201).json({

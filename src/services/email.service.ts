@@ -142,6 +142,33 @@ export async function sendRecordatorioSeguimiento(to: string, nombre: string, co
   });
 }
 
+export async function sendBienvenidaRegistro(
+  to: string,
+  nombre: string,
+  nombreAgencia: string,
+  email: string,
+  password: string,
+  planNombre: string,
+  planPrecio: string,
+  linkPanel: string
+) {
+  return sendEmailAsync({
+    to,
+    subject: `¡Bienvenido a Quotix Travel, ${nombre}!`,
+    templateName: 'bienvenida-registro',
+    variables: {
+      nombre,
+      nombreAgencia,
+      email,
+      password,
+      planNombre,
+      planPrecio,
+      linkPanel
+    },
+    metadata: { tipo: 'bienvenida_registro' }
+  });
+}
+
 export async function getAdminEmails(tenantId: string): Promise<string[]> {
   const { data: admins, error } = await supabase
     .from('users')
