@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { getTenantId } from '../utils/tenant';
+import { randomDigits } from '../utils/cryptoRandom';
 
 // Helper para truncar strings y evitar error 22001 (value too long)
 function truncar(str: string | undefined, maxLength: number): string | undefined {
@@ -234,7 +235,7 @@ export const createPaquete = async (req: Request, res: Response) => {
         // Generar código si no viene
         if (!dataFrontend.codigo) {
             const year = new Date().getFullYear();
-            const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+            const random = randomDigits(3);
             dataFrontend.codigo = `PKG-${year}-${random}`;
         }
 

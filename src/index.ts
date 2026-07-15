@@ -6,7 +6,7 @@ import pinoPretty from 'pino-pretty';
 import path from 'path';
 import fs from 'fs';
 import { supabase } from './config/supabase';
-import { apiLimiter } from './middleware/rateLimiter';
+import { apiLimiter, reportesLimiter, jobsLimiter, registerLimiter } from './middleware/rateLimiter';
 
 dotenv.config();
 
@@ -79,7 +79,7 @@ import configRoutes from './routes/config.routes';
 import billingRoutes from './routes/billing.routes';
 import { webhook as stripeWebhook } from './controllers/billing.controller';
 app.use('/api/auth', express.json(), authRoutes);
-app.use('/api/register', express.json(), registerRoutes);
+app.use('/api/register', registerLimiter, express.json(), registerRoutes);
 app.use('/api/admin', express.json(), adminRoutes);
 app.use('/api/paquetes', express.json(), paquetesRoutes);
 app.use('/api/cotizaciones', express.json(), cotizacionesRoutes);
@@ -90,8 +90,8 @@ app.use('/api/clientes', express.json(), clientesRoutes);
 app.use('/api/notificaciones', express.json(), notificacionesRoutes);
 app.use('/api/recordatorios', express.json(), recordatoriosRoutes);
 app.use('/api/upload', uploadRoutes); // Sin express.json() - usa multipart
-app.use('/api/jobs', express.json(), jobsRoutes);
-app.use('/api/reportes', express.json(), reportesRoutes);
+app.use('/api/jobs', jobsLimiter, express.json(), jobsRoutes);
+app.use('/api/reportes', reportesLimiter, express.json(), reportesRoutes);
 app.use('/api/config', express.json(), configRoutes);
 
 // Stripe webhook necesita body raw para validar firma
@@ -105,10 +105,10 @@ app.get('/api/health', async (req, res) => {
         const { data, error } = await supabase.from('users').select('count', { count: 'exact', head: true });
         
         if (error) {
+            console.error('[Health Check] Database error:', error);
             return res.status(500).json({ 
                 status: 'error', 
-                message: 'Database connection failed',
-                error: error.message 
+                message: 'Database connection failed'
             });
         }
         

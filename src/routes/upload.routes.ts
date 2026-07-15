@@ -7,6 +7,7 @@ import fs from 'fs';
 import { findComprobanteFile } from '../utils/fileSearch';
 import { getComprobantePublicUrl } from '../utils/fileUrl';
 import { getTenantId } from '../utils/tenant';
+import { uniqueFileSuffix, randomString } from '../utils/cryptoRandom';
 import { checkWorkflowMode } from '../utils/features';
 
 const router = Router();
@@ -41,7 +42,7 @@ const storageComprobantes = multer.diskStorage({
     cb(null, comprobantesDir);
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
+    const uniqueSuffix = uniqueFileSuffix();
     const ext = path.extname(file.originalname);
     cb(null, `comprobante-${uniqueSuffix}${ext}`);
   }
@@ -73,7 +74,7 @@ router.post('/paquete-imagen', authenticateToken, upload.single('imagen'), async
 
     const file = req.file;
     const fileExt = file.originalname.split('.').pop();
-    const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+    const fileName = `${Date.now()}-${randomString(16)}.${fileExt}`;
     const filePath = `paquetes/${fileName}`;
 
     // Subir a Supabase Storage
@@ -495,7 +496,7 @@ const storageVouchers = multer.diskStorage({
     cb(null, vouchersDir);
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
+    const uniqueSuffix = uniqueFileSuffix();
     const ext = path.extname(file.originalname);
     cb(null, `voucher-${uniqueSuffix}${ext}`);
   }

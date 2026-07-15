@@ -6,6 +6,7 @@ import { sendEmailAsync, getAdminEmails } from '../services/email.service';
 import { findComprobanteFile } from '../utils/fileSearch';
 import { getTenantId } from '../utils/tenant';
 import { checkFeatureEnabled, checkWorkflowMode } from '../utils/features';
+import { randomDigits } from '../utils/cryptoRandom';
 
 export const createCotizacion = async (req: Request, res: Response) => {
     const { 
@@ -146,7 +147,7 @@ export const createCotizacion = async (req: Request, res: Response) => {
         // ========== PASO 4: PREPARAR DATOS COTIZACIÓN ==========
         const precio_total = precio_enviado || paquete.precio_base * numViajeros;
         const year = new Date().getFullYear();
-        const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
+        const random = randomDigits(5);
         const codigo = `COT-${year}-${random}`;
         const fecha_expiracion = new Date();
         fecha_expiracion.setDate(fecha_expiracion.getDate() + 7);
@@ -777,12 +778,24 @@ export const convertirAVenta = async (req: Request, res: Response) => {
                 return res.status(404).json({ error: 'Paquete no encontrado' });
             }
 
-            if ((paqueteData.cupos_disponibles || 0) < cotizacion.num_pasajeros) {
-                return res.status(400).json({ 
-                    error: 'No hay cupos disponibles', 
-                    disponibles: paqueteData.cupos_disponibles,
-                    solicitados: cotizacion.num_pasajeros
-                });
+            // Descuento atómico de cupos para evitar race condition/overbooking
+            if (paqueteData.cupos_disponibles !== null && paqueteData.cupos_disponibles !== undefined) {
+                const { data: paqueteActualizado, error: updateError } = await supabase
+                    .from('paquetes')
+                    .update({ cupos_disponibles: paqueteData.cupos_disponibles - cotizacion.num_pasajeros })
+                    .eq('tenant_id', tenantId)
+                    .eq('id', cotizacion.paquete_id)
+                    .gte('cupos_disponibles', cotizacion.num_pasajeros)
+                    .select()
+                    .single();
+
+                if (updateError || !paqueteActualizado) {
+                    return res.status(400).json({ 
+                        error: 'No hay cupos disponibles', 
+                        disponibles: paqueteData.cupos_disponibles,
+                        solicitados: cotizacion.num_pasajeros
+                    });
+                }
             }
             
             paquete = paqueteData;
@@ -797,7 +810,7 @@ export const convertirAVenta = async (req: Request, res: Response) => {
 
         // Generar código de venta
         const year = new Date().getFullYear();
-        const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
+        const random = randomDigits(5);
         const codigo_venta = `VEN-${year}-${random}`;
 
         // Preparar notas de venta con datos de pago
@@ -1840,7 +1853,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
 
         // ========== PASO 4: CREAR COTIZACIÓN ==========
         const year = new Date().getFullYear();
-        const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
+        const random = randomDigits(5);
         const codigo = `COT-${year}-${random}`;
 
         const fecha_expiracion = new Date();
