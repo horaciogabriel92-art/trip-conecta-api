@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import fs from 'fs';
 import path from 'path';
-import { sendEmailAsync, getAdminEmails } from '../services/email.service';
+import { sendEmailAsync, getAdminEmails, sendCotizacionPdfEmail } from '../services/email.service';
 import { findComprobanteFile } from '../utils/fileSearch';
 import { getTenantId } from '../utils/tenant';
 import { checkFeatureEnabled, checkWorkflowMode } from '../utils/features';
@@ -1071,7 +1071,13 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
         destino_principal,
         pasajeros_ids,
         pasajeros_nuevos,
-        cliente_id
+        cliente_id,
+        mostrar_desglose_pdf,
+        costo_neto,
+        margen_agencia_porcentaje,
+        margen_agencia_monto,
+        comision_vendedor_porcentaje,
+        comision_vendedor_monto_estimado
     } = req.body;
     const user = (req as any).user;
 
@@ -1363,6 +1369,12 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
                 destino_principal: destinoFinal,
                 num_pasajeros: pasajerosVinculados.length || cotizacionExistente.num_pasajeros || 1,
                 notas: `Cotización manual editada. Destino: ${destinoFinal}`,
+                mostrar_desglose_pdf: mostrar_desglose_pdf !== undefined ? mostrar_desglose_pdf : cotizacionExistente.mostrar_desglose_pdf,
+                costo_neto: costo_neto !== undefined ? costo_neto : cotizacionExistente.costo_neto,
+                margen_agencia_porcentaje: margen_agencia_porcentaje !== undefined ? margen_agencia_porcentaje : cotizacionExistente.margen_agencia_porcentaje,
+                margen_agencia_monto: margen_agencia_monto !== undefined ? margen_agencia_monto : cotizacionExistente.margen_agencia_monto,
+                comision_vendedor_porcentaje: comision_vendedor_porcentaje !== undefined ? comision_vendedor_porcentaje : cotizacionExistente.comision_vendedor_porcentaje,
+                comision_vendedor_monto_estimado: comision_vendedor_monto_estimado !== undefined ? comision_vendedor_monto_estimado : cotizacionExistente.comision_vendedor_monto_estimado,
                 fecha_actualizacion: new Date().toISOString()
             })
             .eq('tenant_id', tenantId)
@@ -1584,7 +1596,13 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
             politicas_cancelacion,
             precios,
             origen_datos,
-            amadeus_pnr_raw
+            amadeus_pnr_raw,
+            mostrar_desglose_pdf,
+            costo_neto,
+            margen_agencia_porcentaje,
+            margen_agencia_monto,
+            comision_vendedor_porcentaje,
+            comision_vendedor_monto_estimado
         } = req.body;
 
         const user = (req as any).user;
@@ -1920,6 +1938,12 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                 precio_total: precioCalculado,
                 precio_moneda: precios?.moneda || 'USD',
                 comision_vendedor: 0,
+                costo_neto: costo_neto ?? null,
+                margen_agencia_porcentaje: margen_agencia_porcentaje ?? null,
+                margen_agencia_monto: margen_agencia_monto ?? null,
+                comision_vendedor_porcentaje: comision_vendedor_porcentaje ?? null,
+                comision_vendedor_monto_estimado: comision_vendedor_monto_estimado ?? null,
+                mostrar_desglose_pdf: mostrar_desglose_pdf !== undefined ? mostrar_desglose_pdf : true,
                 paquete_data: paqueteDataJson,
                 itinerario: paqueteItinerario,
                 notas: paquete_id 
@@ -2267,6 +2291,111 @@ export const enviarCotizacion = async (req: Request, res: Response) => {
 };
 
 // ============================================
+// ENVIAR COTIZACIÓN PDF POR EMAIL
+// ============================================
+
+export const enviarCotizacionPdf = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    const user = (req as any).user;
+    const { to, pdfBase64, filename } = req.body;
+
+    try {
+        // Validar datos requeridos
+        if (!to || !pdfBase64) {
+            return res.status(400).json({ error: 'Destinatario (to) y pdfBase64 son requeridos' });
+        }
+
+        // Verificar que exista la cotización y permisos
+        const { data: cotizacionExistente, error: findError } = await supabase
+            .from('cotizaciones')
+            .select('id, vendedor_id, estado, codigo, cliente_id, precio_total, precio_moneda, destino_principal, nombre_cotizacion, paquete_data')
+            .eq('tenant_id', tenantId)
+            .eq('id', id)
+            .single();
+
+        if (findError || !cotizacionExistente) {
+            return res.status(404).json({ error: 'Cotización no encontrada', details: findError });
+        }
+
+        if (user.role !== 'admin' && cotizacionExistente.vendedor_id !== user.userId) {
+            return res.status(403).json({ error: 'No autorizado' });
+        }
+
+        // Decodificar PDF
+        let pdfBuffer: Buffer;
+        try {
+            const base64Data = pdfBase64.includes(',') ? pdfBase64.split(',')[1] : pdfBase64;
+            pdfBuffer = Buffer.from(base64Data, 'base64');
+        } catch (decodeError: any) {
+            return res.status(400).json({ error: 'PDF inválido', details: decodeError.message });
+        }
+
+        // Obtener datos del cliente y vendedor para personalizar
+        let clienteNombre = 'Cliente';
+        try {
+            const { data: cliente } = await supabase
+                .from('clientes')
+                .select('nombre, apellido, email')
+                .eq('tenant_id', tenantId)
+                .eq('id', cotizacionExistente.cliente_id)
+                .single();
+            if (cliente) {
+                clienteNombre = `${cliente.nombre || ''} ${cliente.apellido || ''}`.trim() || 'Cliente';
+            }
+        } catch (e) { /* noop */ }
+
+        let vendedorNombre = user.nombre || user.email || 'Vendedor';
+        try {
+            const { data: vendedor } = await supabase
+                .from('users')
+                .select('nombre, apellido')
+                .eq('id', cotizacionExistente.vendedor_id)
+                .single();
+            if (vendedor) {
+                vendedorNombre = `${vendedor.nombre || ''} ${vendedor.apellido || ''}`.trim() || vendedorNombre;
+            }
+        } catch (e) { /* noop */ }
+
+        const destino = cotizacionExistente.destino_principal
+            || cotizacionExistente.nombre_cotizacion
+            || 'Viaje';
+        const montoTotal = `${cotizacionExistente.precio_moneda || 'USD'} ${cotizacionExistente.precio_total || 0}`;
+        const pdfFilename = filename || `COT-${cotizacionExistente.codigo}.pdf`;
+
+        // Enviar email (fire-and-forget)
+        sendCotizacionPdfEmail(
+            to,
+            {
+                clienteNombre,
+                codigo: cotizacionExistente.codigo,
+                destino,
+                montoTotal,
+                vendedorNombre,
+                linkPanel: `${process.env.PANEL_URL || 'https://panel.tripconecta.com'}/cotizaciones/${cotizacionExistente.id}`
+            },
+            pdfBuffer,
+            pdfFilename,
+            { cotizacion_id: cotizacionExistente.id, tenant_id: tenantId, enviado_por: user.userId }
+        );
+
+        // Actualizar estado a enviada si aún está nueva
+        if (cotizacionExistente.estado === 'nueva') {
+            await supabase
+                .from('cotizaciones')
+                .update({ estado: 'enviada', fecha_envio: new Date().toISOString() })
+                .eq('tenant_id', tenantId)
+                .eq('id', id);
+        }
+
+        res.json({ message: 'Cotización enviada por email' });
+    } catch (error: any) {
+        console.error('Error enviando cotización PDF:', error);
+        res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+};
+
+// ============================================
 // MIGRACIÓN TEMPORAL - Solo para admin
 // ============================================
 
@@ -2285,6 +2414,42 @@ export const runMigration = async (req: Request, res: Response) => {
                 ALTER TABLE cotizaciones DROP CONSTRAINT IF EXISTS cotizaciones_estado_check;
                 ALTER TABLE cotizaciones ADD CONSTRAINT cotizaciones_estado_check 
                     CHECK (estado IN ('nueva', 'enviada', 'vendida', 'perdida'));
+
+                -- Migración 027: fix multi-tenant unique constraints en clientes
+                ALTER TABLE clientes DROP CONSTRAINT IF EXISTS clientes_tipo_documento_documento_key;
+                ALTER TABLE clientes DROP CONSTRAINT IF EXISTS clientes_email_key;
+                DO $$
+                BEGIN
+                  IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'clientes_tenant_tipo_documento_documento_key'
+                  ) THEN
+                    ALTER TABLE clientes
+                      ADD CONSTRAINT clientes_tenant_tipo_documento_documento_key
+                      UNIQUE (tenant_id, tipo_documento, documento);
+                  END IF;
+
+                  IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'clientes_tenant_email_key'
+                  ) THEN
+                    ALTER TABLE clientes
+                      ADD CONSTRAINT clientes_tenant_email_key
+                      UNIQUE (tenant_id, email);
+                  END IF;
+                END $$;
+
+                -- Migración 028: mejoras de pricing
+                ALTER TABLE cotizaciones
+                    ALTER COLUMN precio_moneda TYPE VARCHAR(10);
+                ALTER TABLE cotizaciones
+                    ADD COLUMN IF NOT EXISTS costo_neto NUMERIC(12,2),
+                    ADD COLUMN IF NOT EXISTS margen_agencia_monto NUMERIC(12,2),
+                    ADD COLUMN IF NOT EXISTS margen_agencia_porcentaje NUMERIC(5,2),
+                    ADD COLUMN IF NOT EXISTS comision_vendedor_porcentaje NUMERIC(5,2),
+                    ADD COLUMN IF NOT EXISTS comision_vendedor_monto_estimado NUMERIC(12,2),
+                    ADD COLUMN IF NOT EXISTS mostrar_desglose_pdf BOOLEAN DEFAULT true;
+                CREATE INDEX IF NOT EXISTS idx_cotizaciones_mostrar_desglose ON cotizaciones(mostrar_desglose_pdf);
             `
         });
         

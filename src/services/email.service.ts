@@ -169,6 +169,40 @@ export async function sendBienvenidaRegistro(
   });
 }
 
+export async function sendCotizacionPdfEmail(
+  to: string | string[],
+  variables: {
+    clienteNombre: string;
+    codigo: string;
+    destino: string;
+    montoTotal: string;
+    vendedorNombre: string;
+    nombreAgencia?: string;
+    linkPanel?: string;
+  },
+  pdfBuffer: Buffer,
+  filename: string,
+  metadata?: Record<string, any>
+) {
+  return sendEmailAsync({
+    to,
+    subject: `Cotización ${variables.codigo} - ${variables.destino || 'Viaje'}`,
+    templateName: 'cotizacion-pdf',
+    variables: {
+      ...variables,
+      nombreAgencia: variables.nombreAgencia || FROM_NAME,
+      linkPanel: variables.linkPanel || 'https://panel.tripconecta.com'
+    },
+    attachments: [
+      {
+        filename,
+        content: pdfBuffer
+      }
+    ],
+    metadata: { tipo: 'cotizacion_pdf', ...metadata }
+  });
+}
+
 export async function getAdminEmails(tenantId: string): Promise<string[]> {
   const { data: admins, error } = await supabase
     .from('users')

@@ -40,3 +40,8 @@ coverage/
 # Misc
 .cache/
 .temp/
+
+# Documentación del proyecto (vive fuera de este repo, no subir a GitHub)
+docs/
+archive/
+business_plan/
