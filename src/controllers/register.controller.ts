@@ -109,7 +109,7 @@ export const register = async (req: Request, res: Response) => {
         activo: true,
         fecha_registro: new Date().toISOString()
       })
-      .select('id, email, nombre, apellido, rol, tenant_id')
+      .select('id, email, nombre, apellido, rol, tenant_id, token_version')
       .single();
 
     if (userError || !user) {
@@ -125,10 +125,11 @@ export const register = async (req: Request, res: Response) => {
         userId: user.id,
         email: user.email,
         role: user.rol,
-        tenantId: user.tenant_id
+        tenantId: user.tenant_id,
+        tokenVersion: user.token_version || 0
       },
       JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: '1d' }
     );
 
     // Enviar email de bienvenida (no bloqueante)

@@ -15,21 +15,36 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
 
     try {
         const decoded: any = jwt.verify(token, JWT_SECRET);
-        
+
+        // Buscar usuario en BD para validar token_version y estado
+        const { data: user, error } = await supabase
+            .from('users')
+            .select('id, tenant_id, rol, permisos, activo, token_version')
+            .eq('id', decoded.userId)
+            .single();
+
+        if (error || !user) {
+            return res.status(403).json({ error: 'Token inválido o usuario no encontrado' });
+        }
+
+        if (!user.activo) {
+            return res.status(403).json({ error: 'Usuario desactivado' });
+        }
+
+        const tokenVersion = decoded.tokenVersion ?? 0;
+        if ((user.token_version || 0) !== tokenVersion) {
+            return res.status(403).json({ error: 'Sesión inválida. Iniciá sesión nuevamente.' });
+        }
+
         // Fallback para tokens viejos sin tenantId o permisos
         if (!decoded.tenantId || !decoded.permisos) {
-            const { data: user } = await supabase
-                .from('users')
-                .select('tenant_id, rol, permisos')
-                .eq('id', decoded.userId)
-                .single();
             if (user?.tenant_id) {
                 decoded.tenantId = user.tenant_id;
             }
             if (user?.permisos) {
                 decoded.permisos = user.permisos;
             } else if (user?.rol) {
-                decoded.permisos = user.rol === 'admin' 
+                decoded.permisos = user.rol === 'admin'
                     ? {
                         ver_todas_cotizaciones: true,
                         ver_todas_ventas: true,
@@ -48,7 +63,7 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
                       };
             }
         }
-        
+
         (req as any).user = decoded;
         next();
     } catch (err: any) {

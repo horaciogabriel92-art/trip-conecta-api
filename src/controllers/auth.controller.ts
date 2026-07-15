@@ -82,10 +82,11 @@ export const login = async (req: Request, res: Response) => {
         email: user.email, 
         role: user.rol,
         tenantId: user.tenant_id,
-        permisos: permissions
+        permisos: permissions,
+        tokenVersion: user.token_version || 0
       },
       JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: '1d' }
     );
 
     res.json({
@@ -230,10 +231,22 @@ export const updateUser = async (req: Request, res: Response) => {
     }
 
     const { id } = req.params;
-    const { nombre, apellido, telefono, email, comision_porcentaje, activo, password, permisos } = req.body;
+    const { nombre, apellido, telefono, email, comision_porcentaje, activo, password, permisos, rol } = req.body;
+
+    // Leer usuario actual para detectar cambios que requieran invalidar tokens
+    const { data: currentUser, error: currentError } = await supabase
+      .from('users')
+      .select('id, email, rol, activo, token_version')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (currentError || !currentUser) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
 
     // Si se cambia el email, verificar que no esté en uso por otro usuario
-    if (email) {
+    if (email && email !== currentUser.email) {
       const { data: existingUser } = await supabase
         .from('users')
         .select('id')
@@ -260,8 +273,21 @@ export const updateUser = async (req: Request, res: Response) => {
       updateData.permisos = permisos;
     }
 
-    if (password && password.length >= 6) {
+    if (rol !== undefined) {
+      updateData.rol = rol;
+    }
+
+    // Invalidar tokens si cambia password, rol o estado activo
+    const passwordChanged = password && password.length >= 6;
+    const rolChanged = rol !== undefined && rol !== currentUser.rol;
+    const activoChanged = activo !== undefined && activo !== currentUser.activo;
+
+    if (passwordChanged) {
       updateData.password = await bcrypt.hash(password, 10);
+    }
+
+    if (passwordChanged || rolChanged || activoChanged) {
+      updateData.token_version = (currentUser.token_version || 0) + 1;
     }
 
     const { data, error } = await supabase
@@ -333,7 +359,7 @@ export const changePassword = async (req: Request, res: Response) => {
 
     const { data: user, error } = await supabase
       .from('users')
-      .select('password')
+      .select('password, token_version')
       .eq('id', userId)
       .eq('tenant_id', tenantId)
       .single();
@@ -351,7 +377,10 @@ export const changePassword = async (req: Request, res: Response) => {
 
     await supabase
       .from('users')
-      .update({ password: hashedPassword })
+      .update({
+        password: hashedPassword,
+        token_version: (user.token_version || 0) + 1
+      })
       .eq('id', userId)
       .eq('tenant_id', tenantId);
 
@@ -428,7 +457,7 @@ export const resetPassword = async (req: Request, res: Response) => {
 
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, reset_token, reset_token_expires, tenant_id')
+      .select('id, reset_token, reset_token_expires, tenant_id, token_version')
       .eq('reset_token', token)
       .single();
 
@@ -450,7 +479,8 @@ export const resetPassword = async (req: Request, res: Response) => {
       .update({
         password: hashedPassword,
         reset_token: null,
-        reset_token_expires: null
+        reset_token_expires: null,
+        token_version: (user.token_version || 0) + 1
       })
       .eq('tenant_id', user.tenant_id)
       .eq('id', user.id);
