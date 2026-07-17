@@ -1442,7 +1442,7 @@ export const updateCotizacion = async (req: Request, res: Response) => {
         'nombre_cotizacion', 'cliente_id', 'pasajeros', 'servicios', 'precio_total',
         'moneda', 'notas', 'fecha_expiracion', 'tipo_pago', 'monto_pagado',
         'monto_restante', 'fecha_pago_resto', 'incluye_iva', 'cotizacion_pdf_url',
-        'comprobantes'
+        'comprobantes', 'estado'
     ];
 
     // Campos editables solo por admin
@@ -1467,6 +1467,11 @@ export const updateCotizacion = async (req: Request, res: Response) => {
 
     if (Object.keys(updateData).length === 0) {
         return res.status(400).json({ error: 'No se proporcionaron campos válidos para actualizar' });
+    }
+
+    // Vendedores no pueden marcar como vendida directamente; debe usar convertirAVenta
+    if (user.role !== 'admin' && updateData.estado === 'vendida') {
+        return res.status(403).json({ error: 'Para convertir en venta usá el botón Convertir a Venta' });
     }
 
     try {
@@ -2431,7 +2436,7 @@ export const runMigration = async (req: Request, res: Response) => {
                 ALTER TABLE cotizaciones ADD COLUMN IF NOT EXISTS fecha_envio TIMESTAMP WITH TIME ZONE;
                 ALTER TABLE cotizaciones DROP CONSTRAINT IF EXISTS cotizaciones_estado_check;
                 ALTER TABLE cotizaciones ADD CONSTRAINT cotizaciones_estado_check 
-                    CHECK (estado IN ('nueva', 'enviada', 'vendida', 'perdida'));
+                    CHECK (estado IN ('nueva', 'enviada', 'vendida', 'perdida', 'aprobada'));
 
                 -- Migración 027: fix multi-tenant unique constraints en clientes
                 ALTER TABLE clientes DROP CONSTRAINT IF EXISTS clientes_tipo_documento_documento_key;
