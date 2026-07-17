@@ -1206,8 +1206,13 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
         // 5. Sincronizar vuelos: eliminar existentes + insertar nuevos
         await supabase.from('vuelos').delete().eq('tenant_id', tenantId).eq('cotizacion_id', id);
 
-        if (vuelos && vuelos.length > 0) {
-            const vuelosInsert = vuelos.map((v: any, index: number) => ({
+        const vuelosValidos = (vuelos || []).filter((v: any) =>
+            (v.origen_nombre || v.origen_codigo || v.origen_ciudad) &&
+            (v.destino_nombre || v.destino_codigo || v.destino_ciudad) &&
+            (v.aerolinea_nombre || v.aerolinea_codigo || v.numero_vuelo)
+        );
+        if (vuelosValidos.length > 0) {
+            const vuelosInsert = vuelosValidos.map((v: any, index: number) => ({
                 cotizacion_id: id,
                 tipo_trayecto: v.tipo_trayecto || v.tipo || 'ida',
                 orden: index + 1,
@@ -1228,7 +1233,7 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
                 clase_nombre: v.clase_nombre,
                 duracion_minutos: v.duracion_minutos,
                 es_escala: v.es_escala || false,
-                datos_completos: v
+                datos_completos: { ...v, precio_por_persona: typeof v.precio_por_persona === 'number' ? v.precio_por_persona : null }
             }));
 
             const { error: vuelosError } = await supabase.from('vuelos').insert(vuelosInsert.map((v: any) => ({ ...v, tenant_id: tenantId })));
@@ -1238,8 +1243,11 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
         // 6. Sincronizar hospedajes: eliminar existentes + insertar nuevos
         await supabase.from('hospedajes').delete().eq('tenant_id', tenantId).eq('cotizacion_id', id);
 
-        if (hospedajes && hospedajes.length > 0) {
-            const hospedajesInsert = hospedajes.map((h: any) => ({
+        const hospedajesValidos = (hospedajes || []).filter((h: any) =>
+            (h.nombre_alojamiento || h.nombre_hotel) && h.ciudad && h.fecha_checkin && h.fecha_checkout
+        );
+        if (hospedajesValidos.length > 0) {
+            const hospedajesInsert = hospedajesValidos.map((h: any) => ({
                 cotizacion_id: id,
                 nombre_hotel: h.nombre_alojamiento || h.nombre_hotel,
                 nombre_alojamiento: h.nombre_alojamiento || h.nombre_hotel,
@@ -1268,8 +1276,9 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
 
         // 6b. Sincronizar traslados
         await supabase.from('traslados').delete().eq('tenant_id', tenantId).eq('cotizacion_id', id);
-        if (traslados && traslados.length > 0) {
-            const trasladosInsert = traslados.map((t: any, index: number) => ({
+        const trasladosValidos = (traslados || []).filter((t: any) => t.nombre);
+        if (trasladosValidos.length > 0) {
+            const trasladosInsert = trasladosValidos.map((t: any, index: number) => ({
                 cotizacion_id: id,
                 tenant_id: tenantId,
                 nombre: t.nombre,
@@ -1288,8 +1297,9 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
 
         // 6c. Sincronizar seguros
         await supabase.from('seguros').delete().eq('tenant_id', tenantId).eq('cotizacion_id', id);
-        if (seguros && seguros.length > 0) {
-            const segurosInsert = seguros.map((s: any) => ({
+        const segurosValidos = (seguros || []).filter((s: any) => s.compania);
+        if (segurosValidos.length > 0) {
+            const segurosInsert = segurosValidos.map((s: any) => ({
                 cotizacion_id: id,
                 tenant_id: tenantId,
                 compania: s.compania,
@@ -1307,8 +1317,9 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
 
         // 6d. Sincronizar extras
         await supabase.from('extras').delete().eq('tenant_id', tenantId).eq('cotizacion_id', id);
-        if (extras && extras.length > 0) {
-            const extrasInsert = extras.map((e: any, index: number) => ({
+        const extrasValidos = (extras || []).filter((e: any) => e.nombre);
+        if (extrasValidos.length > 0) {
+            const extrasInsert = extrasValidos.map((e: any, index: number) => ({
                 cotizacion_id: id,
                 tenant_id: tenantId,
                 nombre: e.nombre,
@@ -1890,6 +1901,9 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
             }
         }
 
+        // Normalizar origen_datos: 'amadeus' es legacy, la DB acepta 'manual' o 'amadeus_pnr'
+        const origenDatosNormalizado = (origen_datos === 'amadeus' ? 'amadeus_pnr' : origen_datos) || 'manual';
+
         // ========== PASO 4: CREAR COTIZACIÓN ==========
         const year = new Date().getFullYear();
         const random = randomDigits(5);
@@ -1956,7 +1970,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                 fecha_expiracion: fecha_expiracion.toISOString(),
                 nombre_cotizacion: nombre_cotizacion || `Viaje a ${destino_principal || 'Destino'}`,
                 tipo_cotizacion: 'manual',
-                origen_datos: origen_datos || 'manual',
+                origen_datos: origenDatosNormalizado,
                 precio_total: precioCalculado,
                 precio_moneda: precios?.moneda || 'USD',
                 comision_vendedor: 0,
@@ -1986,9 +2000,14 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
 
         // ========== PASO 4: GUARDAR VUELOS ==========
         // Si hay vuelos explícitos, usarlos. Si no y hay paquete, usar vuelos del paquete
-        const vuelosAGuardar = (vuelos && vuelos.length > 0) 
-            ? vuelos 
-            : (paqueteData?.vuelos || []);
+        const vuelosAGuardar = ((vuelos && vuelos.length > 0)
+            ? vuelos
+            : (paqueteData?.vuelos || []))
+            .filter((v: any) =>
+                (v.origen_nombre || v.origen_codigo || v.origen_ciudad) &&
+                (v.destino_nombre || v.destino_codigo || v.destino_ciudad) &&
+                (v.aerolinea_nombre || v.aerolinea_codigo || v.numero_vuelo)
+            );
         
         if (vuelosAGuardar.length > 0) {
             const vuelosInsert = vuelosAGuardar.map((v: any, index: number) => ({
@@ -2012,7 +2031,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                 clase_nombre: v.clase_nombre,
                 duracion_minutos: v.duracion_minutos,
                 es_escala: v.es_escala || false,
-                datos_completos: v
+                datos_completos: { ...v, precio_por_persona: typeof v.precio_por_persona === 'number' ? v.precio_por_persona : null }
             }));
 
             const { error: vuelosError } = await supabase
@@ -2025,8 +2044,11 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
         }
 
         // ========== PASO 5: GUARDAR HOSPEDAJES ==========
-        if (hospedajes && hospedajes.length > 0) {
-            const hospedajesInsert = hospedajes.map((h: any) => ({
+        const hospedajesValidos = (hospedajes || []).filter((h: any) =>
+            (h.nombre_alojamiento || h.nombre_hotel) && h.ciudad && h.fecha_checkin && h.fecha_checkout
+        );
+        if (hospedajesValidos.length > 0) {
+            const hospedajesInsert = hospedajesValidos.map((h: any) => ({
                 cotizacion_id: cotizacion.id,
                 nombre_hotel: h.nombre_alojamiento || h.nombre_hotel,
                 nombre_alojamiento: h.nombre_alojamiento || h.nombre_hotel,
@@ -2059,8 +2081,9 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
         }
 
         // ========== PASO 5b: GUARDAR TRASLADOS ==========
-        if (traslados && traslados.length > 0) {
-            const trasladosInsert = traslados.map((t: any, index: number) => ({
+        const trasladosValidos = (traslados || []).filter((t: any) => t.nombre);
+        if (trasladosValidos.length > 0) {
+            const trasladosInsert = trasladosValidos.map((t: any, index: number) => ({
                 cotizacion_id: cotizacion.id,
                 tenant_id: tenantId,
                 nombre: t.nombre,
@@ -2084,8 +2107,9 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
         }
 
         // ========== PASO 5c: GUARDAR SEGUROS ==========
-        if (seguros && seguros.length > 0) {
-            const segurosInsert = seguros.map((s: any) => ({
+        const segurosValidos = (seguros || []).filter((s: any) => s.compania);
+        if (segurosValidos.length > 0) {
+            const segurosInsert = segurosValidos.map((s: any) => ({
                 cotizacion_id: cotizacion.id,
                 tenant_id: tenantId,
                 compania: s.compania,
@@ -2108,8 +2132,9 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
         }
 
         // ========== PASO 5d: GUARDAR EXTRAS ==========
-        if (extras && extras.length > 0) {
-            const extrasInsert = extras.map((e: any, index: number) => ({
+        const extrasValidos = (extras || []).filter((e: any) => e.nombre);
+        if (extrasValidos.length > 0) {
+            const extrasInsert = extrasValidos.map((e: any, index: number) => ({
                 cotizacion_id: cotizacion.id,
                 tenant_id: tenantId,
                 nombre: e.nombre,
