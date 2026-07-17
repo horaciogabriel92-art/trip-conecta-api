@@ -1082,7 +1082,8 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
         comision_vendedor_monto_estimado,
         num_pasajeros,
         fecha_salida,
-        amadeus_pnr_raw
+        amadeus_pnr_raw,
+        notas_internas
     } = req.body;
     const user = (req as any).user;
 
@@ -1391,6 +1392,7 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
             margen_agencia_monto: margen_agencia_monto !== undefined ? margen_agencia_monto : cotizacionExistente.margen_agencia_monto,
             comision_vendedor_porcentaje: comision_vendedor_porcentaje !== undefined ? comision_vendedor_porcentaje : cotizacionExistente.comision_vendedor_porcentaje,
             comision_vendedor_monto_estimado: comision_vendedor_monto_estimado !== undefined ? comision_vendedor_monto_estimado : cotizacionExistente.comision_vendedor_monto_estimado,
+            notas_internas: notas_internas !== undefined ? notas_internas : cotizacionExistente.notas_internas,
             fecha_actualizacion: new Date().toISOString()
         };
 
@@ -1453,7 +1455,7 @@ export const updateCotizacion = async (req: Request, res: Response) => {
         'nombre_cotizacion', 'cliente_id', 'pasajeros', 'servicios', 'precio_total',
         'moneda', 'notas', 'fecha_expiracion', 'tipo_pago', 'monto_pagado',
         'monto_restante', 'fecha_pago_resto', 'incluye_iva', 'cotizacion_pdf_url',
-        'comprobantes', 'estado'
+        'comprobantes', 'estado', 'notas_internas'
     ];
 
     // Campos editables solo por admin
@@ -1634,7 +1636,8 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
             comision_vendedor_porcentaje,
             comision_vendedor_monto_estimado,
             num_pasajeros,
-            fecha_salida
+            fecha_salida,
+            notas_internas
         } = req.body;
 
         const user = (req as any).user;
@@ -1988,6 +1991,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                 destino_principal,
                 num_pasajeros: num_pasajeros ?? pasajerosVinculados.length ?? 1,
                 fecha_salida: fecha_salida || null,
+                notas_internas: notas_internas || null,
                 tenant_id: tenantId
             })
             .select()
