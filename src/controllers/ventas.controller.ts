@@ -37,7 +37,7 @@ export const getVentas = async (req: Request, res: Response) => {
         if (cotizacionIds.length > 0) {
             const { data: cotizaciones, error: cotError } = await supabase
                 .from('cotizaciones')
-                .select('id, codigo, estado, cliente_nombre, cliente_email, paquete_nombre')
+                .select('id, codigo, estado')
                 .eq('tenant_id', tenantId)
                 .in('id', cotizacionIds);
 
@@ -58,9 +58,9 @@ export const getVentas = async (req: Request, res: Response) => {
                 cotizacion_id: cotizacion?.id || venta.cotizacion_id,
                 cotizacion_codigo: cotizacion?.codigo || null,
                 cotizacion_estado: cotizacion?.estado || null,
-                cliente_nombre: venta.cliente_nombre || cotizacion?.cliente_nombre || null,
-                cliente_email: venta.cliente_email || cotizacion?.cliente_email || null,
-                paquete_nombre: venta.paquete_nombre || cotizacion?.paquete_nombre || null,
+                cliente_nombre: venta.cliente_nombre || null,
+                cliente_email: venta.cliente_email || null,
+                paquete_nombre: venta.paquete_nombre || null,
             };
         });
 

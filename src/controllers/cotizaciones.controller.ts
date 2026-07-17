@@ -8,6 +8,17 @@ import { getTenantId } from '../utils/tenant';
 import { checkFeatureEnabled, checkWorkflowMode } from '../utils/features';
 import { randomDigits } from '../utils/cryptoRandom';
 
+// Helper para evitar que el PNR se guarde repetido en itinerario
+function limpiarItinerarioRepetido(itinerario: any, pnrRaw: any): any {
+    if (!itinerario || typeof itinerario !== 'string') return itinerario || null;
+    if (!pnrRaw || typeof pnrRaw !== 'string') return itinerario;
+    const occurrences = itinerario.split(pnrRaw).length - 1;
+    if (occurrences > 1) {
+        return pnrRaw.trim();
+    }
+    return itinerario;
+}
+
 export const createCotizacion = async (req: Request, res: Response) => {
     const { 
         paquete_id, 
@@ -1105,6 +1116,11 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'No se puede editar una cotización vendida o perdida' });
         }
 
+        // 3. Validar precios si vienen
+        if (precios && (typeof precios.total !== 'number' || Number.isNaN(precios.total))) {
+            return res.status(400).json({ error: 'Precio total debe ser un número' });
+        }
+
         // 3. Validar permisos
         if (user.role !== 'admin' && cotizacionExistente.vendedor_id !== user.userId) {
             return res.status(403).json({ error: 'No autorizado' });
@@ -1392,8 +1408,7 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
             margen_agencia_monto: margen_agencia_monto !== undefined ? margen_agencia_monto : cotizacionExistente.margen_agencia_monto,
             comision_vendedor_porcentaje: comision_vendedor_porcentaje !== undefined ? comision_vendedor_porcentaje : cotizacionExistente.comision_vendedor_porcentaje,
             comision_vendedor_monto_estimado: comision_vendedor_monto_estimado !== undefined ? comision_vendedor_monto_estimado : cotizacionExistente.comision_vendedor_monto_estimado,
-            notas_internas: notas_internas !== undefined ? notas_internas : cotizacionExistente.notas_internas,
-            fecha_actualizacion: new Date().toISOString()
+            notas_internas: notas_internas !== undefined ? notas_internas : cotizacionExistente.notas_internas
         };
 
         if (user.role === 'admin' && vendedor_id_body) {
@@ -1854,7 +1869,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
         let hotelSeleccionado: any = null;
         let precioCalculado = precios?.total ?? 0;
         const habitacionTipo = tipo_habitacion || 'doble';
-        const numViajeros = pasajerosVinculados.length || 1;
+        const numViajeros = num_pasajeros ?? pasajerosVinculados.length ?? 1;
         
         if (paquete_id) {
             const { data: paquete } = await supabase
@@ -1936,7 +1951,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
             politicas_cancelacion: paquetePoliticas,
             incluye: paqueteIncluye,
             no_incluye: paqueteNoIncluye,
-            itinerario: paqueteItinerario,
+            itinerario: limpiarItinerarioRepetido(paqueteItinerario, amadeus_pnr_raw),
             vuelos: paqueteData?.vuelos || [],
             amadeus_pnr_raw: amadeus_pnr_raw || null,
             // Desglose de precios
