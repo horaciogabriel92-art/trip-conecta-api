@@ -1058,12 +1058,14 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
     const { id } = req.params;
     const {
         nombre_cotizacion,
+        vendedor_id: vendedor_id_body,
         vuelos,
         hospedajes,
         traslados,
         seguros,
         extras,
         itinerario,
+        itinerario_manual,
         incluye,
         no_incluye,
         politicas_cancelacion,
@@ -1077,7 +1079,10 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
         margen_agencia_porcentaje,
         margen_agencia_monto,
         comision_vendedor_porcentaje,
-        comision_vendedor_monto_estimado
+        comision_vendedor_monto_estimado,
+        num_pasajeros,
+        fecha_salida,
+        amadeus_pnr_raw
     } = req.body;
     const user = (req as any).user;
 
@@ -1336,6 +1341,7 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
         }
 
         // 8. Armar paquete_data actualizado
+        const itinerarioFinal = itinerario_manual || itinerario || cotizacionExistente.itinerario || null;
         const paqueteDataJson: any = {
             ...(cotizacionExistente.paquete_data || {}),
             titulo: nombre_cotizacion || cotizacionExistente.nombre_cotizacion || '',
@@ -1343,40 +1349,47 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
             politicas_cancelacion: politicas_cancelacion || (cotizacionExistente.paquete_data?.politicas_cancelacion) || '',
             incluye: incluye || (cotizacionExistente.paquete_data?.incluye) || [],
             no_incluye: no_incluye || (cotizacionExistente.paquete_data?.no_incluye) || [],
-            itinerario: itinerario || cotizacionExistente.itinerario || null,
-            precio_vuelos: precios?.vuelos || 0,
-            precio_hospedajes: precios?.hospedajes || 0,
-            precio_traslados: precios?.traslados || 0,
-            precio_seguros: precios?.seguros || 0,
-            precio_extras: precios?.extras || 0,
-            precio_subtotal: precios?.subtotal || 0,
-            precio_impuestos: precios?.impuestos || 0
+            itinerario: itinerarioFinal,
+            amadeus_pnr_raw: amadeus_pnr_raw ?? (cotizacionExistente.paquete_data?.amadeus_pnr_raw) ?? null,
+            precio_vuelos: precios?.vuelos ?? 0,
+            precio_hospedajes: precios?.hospedajes ?? 0,
+            precio_traslados: precios?.traslados ?? 0,
+            precio_seguros: precios?.seguros ?? 0,
+            precio_extras: precios?.extras ?? 0,
+            precio_subtotal: precios?.subtotal ?? 0,
+            precio_impuestos: precios?.impuestos ?? 0
         };
 
-        const precioTotal = parseFloat(precios?.total) || cotizacionExistente.precio_total || 0;
+        const precioTotal = precios?.total ?? cotizacionExistente.precio_total ?? 0;
         const destinoFinal = destino_principal || cotizacionExistente.destino_principal || '';
 
         // 9. Actualizar cotización
+        const updatePayload: any = {
+            cliente_id: clienteFinalId,
+            nombre_cotizacion: nombre_cotizacion || cotizacionExistente.nombre_cotizacion,
+            precio_total: precioTotal,
+            precio_moneda: precios?.moneda || cotizacionExistente.precio_moneda || 'USD',
+            paquete_data: paqueteDataJson,
+            itinerario: itinerarioFinal,
+            destino_principal: destinoFinal,
+            num_pasajeros: num_pasajeros ?? pasajerosVinculados.length ?? cotizacionExistente.num_pasajeros ?? 1,
+            fecha_salida: fecha_salida ?? cotizacionExistente.fecha_salida ?? null,
+            mostrar_desglose_pdf: mostrar_desglose_pdf !== undefined ? mostrar_desglose_pdf : cotizacionExistente.mostrar_desglose_pdf,
+            costo_neto: costo_neto !== undefined ? costo_neto : cotizacionExistente.costo_neto,
+            margen_agencia_porcentaje: margen_agencia_porcentaje !== undefined ? margen_agencia_porcentaje : cotizacionExistente.margen_agencia_porcentaje,
+            margen_agencia_monto: margen_agencia_monto !== undefined ? margen_agencia_monto : cotizacionExistente.margen_agencia_monto,
+            comision_vendedor_porcentaje: comision_vendedor_porcentaje !== undefined ? comision_vendedor_porcentaje : cotizacionExistente.comision_vendedor_porcentaje,
+            comision_vendedor_monto_estimado: comision_vendedor_monto_estimado !== undefined ? comision_vendedor_monto_estimado : cotizacionExistente.comision_vendedor_monto_estimado,
+            fecha_actualizacion: new Date().toISOString()
+        };
+
+        if (user.role === 'admin' && vendedor_id_body) {
+            updatePayload.vendedor_id = vendedor_id_body;
+        }
+
         const { data: cotizacion, error: updateError } = await supabase
             .from('cotizaciones')
-            .update({
-                cliente_id: clienteFinalId,
-                nombre_cotizacion: nombre_cotizacion || cotizacionExistente.nombre_cotizacion,
-                precio_total: precioTotal,
-                precio_moneda: precios?.moneda || cotizacionExistente.precio_moneda || 'USD',
-                paquete_data: paqueteDataJson,
-                itinerario: itinerario || cotizacionExistente.itinerario,
-                destino_principal: destinoFinal,
-                num_pasajeros: pasajerosVinculados.length || cotizacionExistente.num_pasajeros || 1,
-                notas: `Cotización manual editada. Destino: ${destinoFinal}`,
-                mostrar_desglose_pdf: mostrar_desglose_pdf !== undefined ? mostrar_desglose_pdf : cotizacionExistente.mostrar_desglose_pdf,
-                costo_neto: costo_neto !== undefined ? costo_neto : cotizacionExistente.costo_neto,
-                margen_agencia_porcentaje: margen_agencia_porcentaje !== undefined ? margen_agencia_porcentaje : cotizacionExistente.margen_agencia_porcentaje,
-                margen_agencia_monto: margen_agencia_monto !== undefined ? margen_agencia_monto : cotizacionExistente.margen_agencia_monto,
-                comision_vendedor_porcentaje: comision_vendedor_porcentaje !== undefined ? comision_vendedor_porcentaje : cotizacionExistente.comision_vendedor_porcentaje,
-                comision_vendedor_monto_estimado: comision_vendedor_monto_estimado !== undefined ? comision_vendedor_monto_estimado : cotizacionExistente.comision_vendedor_monto_estimado,
-                fecha_actualizacion: new Date().toISOString()
-            })
+            .update(updatePayload)
             .eq('tenant_id', tenantId)
             .eq('id', id)
             .select()
@@ -1591,6 +1604,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
             seguros,
             extras,
             itinerario,
+            itinerario_manual,
             incluye,
             no_incluye,
             politicas_cancelacion,
@@ -1602,7 +1616,9 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
             margen_agencia_porcentaje,
             margen_agencia_monto,
             comision_vendedor_porcentaje,
-            comision_vendedor_monto_estimado
+            comision_vendedor_monto_estimado,
+            num_pasajeros,
+            fecha_salida
         } = req.body;
 
         const user = (req as any).user;
@@ -1616,8 +1632,8 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'Debe proporcionar cliente_id o datos de cliente_nuevo' });
         }
 
-        if (!precios || !precios.total) {
-            return res.status(400).json({ error: 'Precio total es requerido' });
+        if (!precios || typeof precios.total !== 'number' || Number.isNaN(precios.total)) {
+            return res.status(400).json({ error: 'Precio total es requerido y debe ser un número' });
         }
 
         // ========== PASO 1: BUSCAR O CREAR CLIENTE ==========
@@ -1811,13 +1827,13 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
 
         // ========== PASO 3: CONSULTAR PAQUETE (si aplica) ==========
         let paqueteData: any = null;
-        let paqueteItinerario = itinerario || null;
+        let paqueteItinerario = itinerario_manual || itinerario || null;
         let paqueteIncluye = incluye || [];
         let paqueteNoIncluye = no_incluye || [];
         let paquetePoliticas = politicas_cancelacion || '';
         let paqueteDestino = '';
         let hotelSeleccionado: any = null;
-        let precioCalculado = parseFloat(precios?.total) || 0;
+        let precioCalculado = precios?.total ?? 0;
         const habitacionTipo = tipo_habitacion || 'doble';
         const numViajeros = pasajerosVinculados.length || 1;
         
@@ -1900,14 +1916,15 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
             no_incluye: paqueteNoIncluye,
             itinerario: paqueteItinerario,
             vuelos: paqueteData?.vuelos || [],
+            amadeus_pnr_raw: amadeus_pnr_raw || null,
             // Desglose de precios
-            precio_vuelos: precios?.vuelos || 0,
-            precio_hospedajes: precios?.hospedajes || precioCalculado,
-            precio_traslados: precios?.traslados || 0,
-            precio_seguros: precios?.seguros || 0,
-            precio_extras: precios?.extras || 0,
-            precio_subtotal: precios?.subtotal || precioCalculado,
-            precio_impuestos: precios?.impuestos || 0
+            precio_vuelos: precios?.vuelos ?? 0,
+            precio_hospedajes: precios?.hospedajes ?? 0,
+            precio_traslados: precios?.traslados ?? 0,
+            precio_seguros: precios?.seguros ?? 0,
+            precio_extras: precios?.extras ?? 0,
+            precio_subtotal: precios?.subtotal ?? 0,
+            precio_impuestos: precios?.impuestos ?? 0
         };
         
         // Agregar hotel seleccionado al paquete_data
@@ -1933,7 +1950,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                 fecha_creacion: new Date().toISOString(),
                 fecha_expiracion: fecha_expiracion.toISOString(),
                 nombre_cotizacion: nombre_cotizacion || `Viaje a ${destino_principal || 'Destino'}`,
-                tipo_cotizacion: tipo_cotizacion || (paquete_id ? 'paquete' : 'manual'),
+                tipo_cotizacion: 'manual',
                 origen_datos: origen_datos || 'manual',
                 precio_total: precioCalculado,
                 precio_moneda: precios?.moneda || 'USD',
@@ -1950,7 +1967,8 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                     ? `Cotización desde paquete: ${paqueteData?.titulo || ''}. Destino: ${destino_principal}`
                     : `Cotización manual creada desde cero. Destino: ${destino_principal}`,
                 destino_principal,
-                num_pasajeros: pasajerosVinculados.length,
+                num_pasajeros: num_pasajeros ?? pasajerosVinculados.length ?? 1,
+                fecha_salida: fecha_salida || null,
                 tenant_id: tenantId
             })
             .select()
