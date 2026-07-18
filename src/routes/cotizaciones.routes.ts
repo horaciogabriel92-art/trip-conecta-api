@@ -5,7 +5,6 @@ import { authenticateToken } from '../middleware/auth';
 const router = Router();
 
 router.get('/', authenticateToken, cotizacionesController.getCotizaciones);
-router.post('/migrate', authenticateToken, cotizacionesController.runMigration);
 router.post('/', authenticateToken, cotizacionesController.createCotizacion);
 
 // Rutas específicas (deben ir antes que /:id)

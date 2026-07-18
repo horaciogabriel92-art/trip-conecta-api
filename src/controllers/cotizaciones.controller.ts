@@ -340,53 +340,63 @@ export const getCotizaciones = async (req: Request, res: Response) => {
             });
         }
         
-        // 4. Para cada cotización, obtener conteos de vuelos y hospedajes
-        const cotizacionesConDatos = await Promise.all(
-            (cotizaciones || []).map(async (c: any) => {
-                // Contar vuelos
-                const { count: numVuelos } = await supabase
+        // 4. Conteos de vuelos y hospedajes en batch (2 queries totales en vez de 2 por cotización)
+        const vuelosCountMap: Record<string, number> = {};
+        const hospedajesCountMap: Record<string, number> = {};
+        if (cotizacionIds.length > 0) {
+            const [{ data: vuelosRows }, { data: hospedajesRows }] = await Promise.all([
+                supabase
                     .from('vuelos')
-                    .select('*', { count: 'exact', head: true })
+                    .select('cotizacion_id')
                     .eq('tenant_id', tenantId)
-                    .eq('cotizacion_id', c.id);
-                
-                // Contar hospedajes
-                const { count: numHospedajes } = await supabase
+                    .in('cotizacion_id', cotizacionIds),
+                supabase
                     .from('hospedajes')
-                    .select('*', { count: 'exact', head: true })
+                    .select('cotizacion_id')
                     .eq('tenant_id', tenantId)
-                    .eq('cotizacion_id', c.id);
-                
-                // Determinar tipo y nombres
-                const tipoCotizacion = c.tipo_cotizacion || (c.paquete_id ? 'paquete' : 'manual');
-                
-                // Cliente: usar tabla clientes si existe, sino legacy
-                let clienteNombre = c.cliente_nombre || 'Sin cliente';
-                if (c.cliente_id && clientesMap[c.cliente_id]) {
-                    clienteNombre = `${clientesMap[c.cliente_id].nombre} ${clientesMap[c.cliente_id].apellido}`;
-                }
-                
-                // Vendedor: usar tabla users
-                let vendedorNombre = c.vendedor_nombre || 'Sin vendedor';
-                if (c.vendedor_id && vendedoresMap[c.vendedor_id]) {
-                    vendedorNombre = `${vendedoresMap[c.vendedor_id].nombre} ${vendedoresMap[c.vendedor_id].apellido}`;
-                }
-                
-                const paqueteNombre = c.nombre_cotizacion || c.paquete_nombre || 'Cotización';
-                
-                return {
-                    ...c,
-                    tipo_cotizacion: tipoCotizacion,
-                    cliente_nombre: clienteNombre,
-                    vendedor_nombre: vendedorNombre,
-                    paquete_nombre: paqueteNombre,
-                    venta_id: ventaIdMap[c.id] || null,
-                    vuelos: Array(numVuelos || 0).fill({}), // Array vacío del tamaño correcto para la UI
-                    hospedaje: Array(numHospedajes || 0).fill({}),
-                    num_pasajeros: c.num_pasajeros || 1
-                };
-            })
-        );
+                    .in('cotizacion_id', cotizacionIds)
+            ]);
+            vuelosRows?.forEach((v: any) => {
+                vuelosCountMap[v.cotizacion_id] = (vuelosCountMap[v.cotizacion_id] || 0) + 1;
+            });
+            hospedajesRows?.forEach((h: any) => {
+                hospedajesCountMap[h.cotizacion_id] = (hospedajesCountMap[h.cotizacion_id] || 0) + 1;
+            });
+        }
+
+        const cotizacionesConDatos = (cotizaciones || []).map((c: any) => {
+            const numVuelos = vuelosCountMap[c.id] || 0;
+            const numHospedajes = hospedajesCountMap[c.id] || 0;
+
+            // Determinar tipo y nombres
+            const tipoCotizacion = c.tipo_cotizacion || (c.paquete_id ? 'paquete' : 'manual');
+
+            // Cliente: usar tabla clientes si existe, sino legacy
+            let clienteNombre = c.cliente_nombre || 'Sin cliente';
+            if (c.cliente_id && clientesMap[c.cliente_id]) {
+                clienteNombre = `${clientesMap[c.cliente_id].nombre} ${clientesMap[c.cliente_id].apellido}`;
+            }
+
+            // Vendedor: usar tabla users
+            let vendedorNombre = c.vendedor_nombre || 'Sin vendedor';
+            if (c.vendedor_id && vendedoresMap[c.vendedor_id]) {
+                vendedorNombre = `${vendedoresMap[c.vendedor_id].nombre} ${vendedoresMap[c.vendedor_id].apellido}`;
+            }
+
+            const paqueteNombre = c.nombre_cotizacion || c.paquete_nombre || 'Cotización';
+
+            return {
+                ...c,
+                tipo_cotizacion: tipoCotizacion,
+                cliente_nombre: clienteNombre,
+                vendedor_nombre: vendedorNombre,
+                paquete_nombre: paqueteNombre,
+                venta_id: ventaIdMap[c.id] || null,
+                vuelos: Array(numVuelos).fill({}), // Array vacío del tamaño correcto para la UI
+                hospedaje: Array(numHospedajes).fill({}),
+                num_pasajeros: c.num_pasajeros || 1
+            };
+        });
         
         res.json(cotizacionesConDatos);
     } catch (error: any) {
@@ -1545,9 +1555,14 @@ export const updateCotizacion = async (req: Request, res: Response) => {
         return res.status(400).json({ error: 'No se proporcionaron campos válidos para actualizar' });
     }
 
-    // Vendedores no pueden marcar como vendida directamente; debe usar convertirAVenta
-    if (user.role !== 'admin' && updateData.estado === 'vendida') {
+    // Nadie puede marcar como vendida por el endpoint genérico: debe usar convertirAVenta (crea la venta)
+    if (updateData.estado === 'vendida') {
         return res.status(403).json({ error: 'Para convertir en venta usá el botón Convertir a Venta' });
+    }
+
+    // El estado aprobada solo se setea por el endpoint dedicado (guarda fecha_aprobacion y aprobada_por)
+    if (updateData.estado === 'aprobada') {
+        return res.status(403).json({ error: 'Para aprobar usá el botón Aprobar Cotización' });
     }
 
     try {
@@ -1602,7 +1617,8 @@ export const aprobarCotizacion = async (req: Request, res: Response) => {
             .update({
                 estado: 'aprobada',
                 notas_admin: notas_admin || null,
-                fecha_aprobacion: new Date().toISOString()
+                fecha_aprobacion: new Date().toISOString(),
+                aprobada_por: user.userId
             })
             .eq('tenant_id', tenantId)
             .eq('id', id)
@@ -2404,11 +2420,17 @@ export const enviarCotizacion = async (req: Request, res: Response) => {
             return res.status(403).json({ error: 'No autorizado' });
         }
         
+        // Solo se puede enviar una cotización activa (no vendida ni perdida)
+        if (cotizacionExistente.estado === 'vendida' || cotizacionExistente.estado === 'perdida') {
+            return res.status(400).json({ error: `No se puede enviar una cotización en estado ${cotizacionExistente.estado}` });
+        }
+        
         // Actualizar estado a enviada
         const { data: cotizacion, error } = await supabase
             .from('cotizaciones')
             .update({ 
-                estado: 'enviada'
+                estado: 'enviada',
+                fecha_envio: new Date().toISOString()
             })
             .eq('tenant_id', tenantId)
             .eq('id', id)
@@ -2541,67 +2563,8 @@ export const enviarCotizacionPdf = async (req: Request, res: Response) => {
 // ============================================
 
 export const runMigration = async (req: Request, res: Response) => {
-    const user = (req as any).user;
-    
-    if (user.role !== 'admin') {
-        return res.status(403).json({ error: 'Solo administradores pueden ejecutar migraciones' });
-    }
-    
-    try {
-        // Ejecutar la migración SQL
-        const { error } = await supabase.rpc('exec_sql', {
-            sql: `
-                ALTER TABLE cotizaciones ADD COLUMN IF NOT EXISTS fecha_envio TIMESTAMP WITH TIME ZONE;
-                ALTER TABLE cotizaciones DROP CONSTRAINT IF EXISTS cotizaciones_estado_check;
-                ALTER TABLE cotizaciones ADD CONSTRAINT cotizaciones_estado_check 
-                    CHECK (estado IN ('nueva', 'enviada', 'vendida', 'perdida', 'aprobada'));
-
-                -- Migración 027: fix multi-tenant unique constraints en clientes
-                ALTER TABLE clientes DROP CONSTRAINT IF EXISTS clientes_tipo_documento_documento_key;
-                ALTER TABLE clientes DROP CONSTRAINT IF EXISTS clientes_email_key;
-                DO $$
-                BEGIN
-                  IF NOT EXISTS (
-                    SELECT 1 FROM pg_constraint
-                    WHERE conname = 'clientes_tenant_tipo_documento_documento_key'
-                  ) THEN
-                    ALTER TABLE clientes
-                      ADD CONSTRAINT clientes_tenant_tipo_documento_documento_key
-                      UNIQUE (tenant_id, tipo_documento, documento);
-                  END IF;
-
-                  IF NOT EXISTS (
-                    SELECT 1 FROM pg_constraint
-                    WHERE conname = 'clientes_tenant_email_key'
-                  ) THEN
-                    ALTER TABLE clientes
-                      ADD CONSTRAINT clientes_tenant_email_key
-                      UNIQUE (tenant_id, email);
-                  END IF;
-                END $$;
-
-                -- Migración 028: mejoras de pricing
-                ALTER TABLE cotizaciones
-                    ALTER COLUMN precio_moneda TYPE VARCHAR(10);
-                ALTER TABLE cotizaciones
-                    ADD COLUMN IF NOT EXISTS costo_neto NUMERIC(12,2),
-                    ADD COLUMN IF NOT EXISTS margen_agencia_monto NUMERIC(12,2),
-                    ADD COLUMN IF NOT EXISTS margen_agencia_porcentaje NUMERIC(5,2),
-                    ADD COLUMN IF NOT EXISTS comision_vendedor_porcentaje NUMERIC(5,2),
-                    ADD COLUMN IF NOT EXISTS comision_vendedor_monto_estimado NUMERIC(12,2),
-                    ADD COLUMN IF NOT EXISTS mostrar_desglose_pdf BOOLEAN DEFAULT true;
-                CREATE INDEX IF NOT EXISTS idx_cotizaciones_mostrar_desglose ON cotizaciones(mostrar_desglose_pdf);
-            `
-        });
-        
-        if (error) {
-            console.error('Error en migración:', error);
-            return res.status(500).json({ error: 'Error en migración', details: error });
-        }
-        
-        res.json({ message: 'Migración ejecutada exitosamente' });
-    } catch (error: any) {
-        console.error('Error ejecutando migración:', error);
-        res.status(500).json({ error: 'Internal server error', details: error.message });
-    }
+    // Deshabilitado (18 Jul 2026): las migraciones ya fueron aplicadas y este endpoint
+    // exponía el RPC exec_sql si se comprometía una cuenta admin.
+    // Las migraciones se ejecutan manualmente en Supabase desde la carpeta migrations/.
+    return res.status(410).json({ error: 'Endpoint deshabilitado. Las migraciones se ejecutan manualmente en Supabase.' });
 };

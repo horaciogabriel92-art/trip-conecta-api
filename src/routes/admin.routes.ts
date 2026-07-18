@@ -158,10 +158,11 @@ router.post('/backup-comprobantes', authenticateToken, async (req, res) => {
         const backupFile = path.join(backupDir, `comprobantes-backup-${timestamp}.tar.gz`);
         
         // Crear backup con tar
-        const { execSync } = require('child_process');
+        const { execFileSync } = require('child_process');
         
         try {
-            execSync(`tar -czf "${backupFile}" -C "${uploadDir}" comprobantes`, { 
+            // Sin shell: paths como argumentos separados (evita inyección de comandos)
+            execFileSync('tar', ['-czf', backupFile, '-C', uploadDir, 'comprobantes'], { 
                 timeout: 60000,
                 stdio: 'pipe'
             });

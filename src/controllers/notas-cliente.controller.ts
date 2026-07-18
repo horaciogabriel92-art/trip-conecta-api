@@ -10,7 +10,7 @@ export const getNotasByCliente = async (req: Request, res: Response) => {
     const tenantId = getTenantId(req);
     const cliente_id = req.params.id;
     const userId = (req as any).user.userId;
-    const userRole = (req as any).user.rol;
+    const userRole = (req as any).user.role;
 
     try {
         // Verificar acceso al cliente (solo admin ve todas las notas)
@@ -43,7 +43,7 @@ export const getNotasByCliente = async (req: Request, res: Response) => {
             .order('created_at', { ascending: false });
 
         // Si no es admin, solo ver notas públicas o las propias
-        if (userRole !== 'ADMIN') {
+        if (userRole !== 'admin') {
             query = query.or(`es_privada.eq.false,vendedor_id.eq.${userId}`);
         }
 
@@ -136,7 +136,7 @@ export const updateNota = async (req: Request, res: Response) => {
     const { id } = req.params;
     const { contenido, tipo, es_privada } = req.body;
     const userId = (req as any).user.userId;
-    const userRole = (req as any).user.rol;
+    const userRole = (req as any).user.role;
 
     try {
         // Verificar que la nota existe y pertenece al usuario (o es admin)
@@ -152,7 +152,7 @@ export const updateNota = async (req: Request, res: Response) => {
         }
 
         // Solo el creador o admin pueden editar
-        if (notaExistente.vendedor_id !== userId && userRole !== 'ADMIN') {
+        if (notaExistente.vendedor_id !== userId && userRole !== 'admin') {
             return res.status(403).json({ error: 'No tiene permiso para editar esta nota' });
         }
 
@@ -192,7 +192,7 @@ export const deleteNota = async (req: Request, res: Response) => {
     const tenantId = getTenantId(req);
     const { id } = req.params;
     const userId = (req as any).user.userId;
-    const userRole = (req as any).user.rol;
+    const userRole = (req as any).user.role;
 
     try {
         // Verificar que la nota existe
@@ -208,7 +208,7 @@ export const deleteNota = async (req: Request, res: Response) => {
         }
 
         // Solo el creador o admin pueden eliminar
-        if (notaExistente.vendedor_id !== userId && userRole !== 'ADMIN') {
+        if (notaExistente.vendedor_id !== userId && userRole !== 'admin') {
             return res.status(403).json({ error: 'No tiene permiso para eliminar esta nota' });
         }
 
