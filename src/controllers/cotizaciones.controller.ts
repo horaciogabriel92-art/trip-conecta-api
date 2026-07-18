@@ -199,10 +199,6 @@ export const createCotizacion = async (req: Request, res: Response) => {
                 vendedor_id,
                 paquete_id,
                 cliente_id: clienteId,
-                cliente_nombre,
-                cliente_email,
-                cliente_telefono,
-                tipo_habitacion: tipo_habitacion || 'doble',
                 num_pasajeros: numViajeros,
                 fecha_salida: fecha_salida || null,
                 precio_total,
@@ -813,6 +809,7 @@ export const convertirAVenta = async (req: Request, res: Response) => {
 
         // Verificar cupos solo si viene de un paquete (cotizaciones manuales no tienen paquete_id)
         let paquete = null;
+        let nuevosCupos: number | null = null;
         if (cotizacion.paquete_id) {
             const { data: paqueteData, error: paqueteError } = await supabase
                 .from('paquetes')
@@ -843,6 +840,8 @@ export const convertirAVenta = async (req: Request, res: Response) => {
                         solicitados: cotizacion.num_pasajeros
                     });
                 }
+
+                nuevosCupos = paqueteActualizado.cupos_disponibles;
             }
             
             paquete = paqueteData;
@@ -1011,17 +1010,6 @@ export const convertirAVenta = async (req: Request, res: Response) => {
                 registrado_por: user.userId,
                 tenant_id: tenantId
             });
-        }
-
-        // RESTAR CUPOS DISPONIBLES (solo si viene de un paquete)
-        let nuevosCupos = null;
-        if (paquete && cotizacion.paquete_id) {
-            nuevosCupos = (paquete.cupos_disponibles || 0) - cotizacion.num_pasajeros;
-            await supabase
-                .from('paquetes')
-                .update({ cupos_disponibles: nuevosCupos })
-                .eq('tenant_id', tenantId)
-                .eq('id', cotizacion.paquete_id);
         }
 
         // Notificar a admins y vendedor por email (fire-and-forget)
@@ -1933,13 +1921,26 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
         const numViajeros = num_pasajeros ?? pasajerosVinculados.length ?? 1;
         
         if (paquete_id) {
-            const { data: paquete } = await supabase
+            const { data: paquete, error: paqueteError } = await supabase
                 .from('paquetes')
                 .select('*')
                 .eq('tenant_id', tenantId)
                 .eq('id', paquete_id)
                 .single();
             
+            if (paqueteError || !paquete) {
+                return res.status(404).json({ error: 'Paquete no encontrado' });
+            }
+
+            // Validar cupos al cotizar (el descuento se hace una única vez al convertir a venta)
+            if (paquete.cupos_disponibles !== null && paquete.cupos_disponibles !== undefined && paquete.cupos_disponibles < numViajeros) {
+                return res.status(400).json({
+                    error: 'No hay cupos disponibles',
+                    disponibles: paquete.cupos_disponibles,
+                    solicitados: numViajeros
+                });
+            }
+
             if (paquete) {
                 paqueteData = paquete;
                 paqueteDestino = paquete.destino || '';
@@ -1968,8 +1969,8 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                     hotelSeleccionado = hoteles[0];
                 }
                 
-                // Calcular precio según hotel y tipo de habitación
-                if (hotelSeleccionado) {
+                // Calcular precio según hotel y tipo de habitación (solo como fallback si el frontend no envió total)
+                if (hotelSeleccionado && (precios?.total === null || precios?.total === undefined)) {
                     const precioPorPersona = hotelSeleccionado.precios?.[habitacionTipo] 
                         || hotelSeleccionado.precios?.doble 
                         || paquete.precio_doble 
