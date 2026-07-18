@@ -3,6 +3,7 @@ import { supabase } from '../config/supabase';
 import fs from 'fs';
 import path from 'path';
 import { sendEmailAsync, getAdminEmails, sendCotizacionPdfEmail } from '../services/email.service';
+import { crearNotificacionInterna } from '../services/notificaciones.service';
 import { findComprobanteFile } from '../utils/fileSearch';
 import { getTenantId } from '../utils/tenant';
 import { checkFeatureEnabled, checkWorkflowMode } from '../utils/features';
@@ -1064,6 +1065,28 @@ export const convertirAVenta = async (req: Request, res: Response) => {
                     linkVendedor: `${process.env.PANEL_URL || 'https://panel.tripconecta.com'}/mis-ventas`
                 },
                 metadata: { tipo: 'nueva_venta_vendedor', venta_id: venta.id, cotizacion_id: id }
+            });
+        }
+
+        // Notificación in-app (campanita): admins del tenant + vendedor dueño
+        crearNotificacionInterna({
+            tenantId,
+            usuario_id: null,
+            tipo: 'nueva_venta',
+            titulo: `Venta confirmada ${codigo_venta}`,
+            mensaje: `${(req as any).user?.nombre || 'Vendedor'} convirtió la cotización de ${clienteNombre || 'Cliente'} en venta por $${cotizacion.precio_total || 0}`,
+            referencia_id: venta.id,
+            referencia_tipo: 'venta'
+        });
+        if (cotizacion.vendedor_id) {
+            crearNotificacionInterna({
+                tenantId,
+                usuario_id: cotizacion.vendedor_id,
+                tipo: 'nueva_venta',
+                titulo: `Venta confirmada ${codigo_venta}`,
+                mensaje: `Tu cotización de ${clienteNombre || 'Cliente'} se convirtió en venta por $${cotizacion.precio_total || 0}`,
+                referencia_id: venta.id,
+                referencia_tipo: 'venta'
             });
         }
 
@@ -2271,6 +2294,17 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                 metadata: { tipo: 'nueva_cotizacion', cotizacion_id: cotizacion.id }
             });
         }
+
+        // Notificación in-app (campanita) para admins del tenant
+        crearNotificacionInterna({
+            tenantId,
+            usuario_id: null,
+            tipo: 'nueva_cotizacion',
+            titulo: `Nueva cotización ${codigo}`,
+            mensaje: `${user.nombre || user.email || 'Vendedor'} creó una cotización para ${clienteData ? `${clienteData.nombre || ''} ${clienteData.apellido || ''}`.trim() : 'Cliente'} por $${cotizacion.precio_total || 0}`,
+            referencia_id: cotizacion.id,
+            referencia_tipo: 'cotizacion'
+        });
 
         res.status(201).json({
             message: 'Cotización creada exitosamente',

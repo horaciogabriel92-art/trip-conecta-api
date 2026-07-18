@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { sendEmailAsync, getAdminEmails } from '../services/email.service';
+import { crearNotificacionInterna } from '../services/notificaciones.service';
 import { getTenantId } from '../utils/tenant';
 
 // ============================================
@@ -249,6 +250,7 @@ export const sendRecordatorioReminders = async (req: Request, res: Response) => 
             .from('recordatorios')
             .select(`
                 id, titulo, descripcion, fecha_recordatorio,
+                vendedor_id, asignado_a,
                 cliente:cliente_id(nombre, apellido, email),
                 vendedor:vendedor_id(email, nombre),
                 asignado:asignado_a(email, nombre)
@@ -300,6 +302,18 @@ export const sendRecordatorioReminders = async (req: Request, res: Response) => 
                         fechaRecordatorio: fechaFormateada,
                         linkPanel: `${process.env.FRONTEND_URL || 'https://panel.tripconecta.com'}/dashboard`
                     }
+                });
+
+                // Notificación in-app (campanita) para el asignado o el vendedor
+                const usuarioDestino = (rec as any).asignado_a || (rec as any).vendedor_id || null;
+                await crearNotificacionInterna({
+                    tenantId,
+                    usuario_id: usuarioDestino,
+                    tipo: 'sistema',
+                    titulo: `Recordatorio: ${rec.titulo}`,
+                    mensaje: `${rec.descripcion || 'Tienes un recordatorio pendiente'} — Cliente: ${clienteNombre} — ${fechaFormateada}`,
+                    referencia_id: rec.id,
+                    referencia_tipo: 'recordatorio'
                 });
 
                 // Marcar como notificado
