@@ -219,14 +219,19 @@ export const updateTenantConfig = async (req: Request, res: Response) => {
     }
 
     const plan = normalizePlan(tenant.plans);
-    if (!plan) {
+
+    // Solo se exige plan válido cuando el update toca features o workflow.
+    // Otros cambios (ej. pdf_brand) no deben bloquearse por un plan faltante.
+    const tocaFeaturesOWorkflow = configuracion.features !== undefined || configuracion.workflow !== undefined;
+
+    if (tocaFeaturesOWorkflow && !plan) {
       console.error('[config] Could not normalize plan for tenant:', tenantId, 'plans:', tenant.plans);
       return res.status(500).json({ error: 'Error al obtener el plan del tenant' });
     }
 
     // Validate workflow mode against plan
     const requestedMode = configuracion.workflow?.mode;
-    if (requestedMode === 'vendedor_autoconfirma' && !planAllows(plan, 'vendedor_autoconfirma')) {
+    if (requestedMode === 'vendedor_autoconfirma' && plan && !planAllows(plan, 'vendedor_autoconfirma')) {
       return res.status(403).json({
         error: 'El modo vendedor_autoconfirma no está disponible en este plan'
       });
@@ -234,7 +239,7 @@ export const updateTenantConfig = async (req: Request, res: Response) => {
 
     // Validate comisiones feature against plan
     const requestedComisiones = configuracion.features?.comisiones?.enabled;
-    if (requestedComisiones === true && !planAllows(plan, 'comisiones')) {
+    if (requestedComisiones === true && plan && !planAllows(plan, 'comisiones')) {
       return res.status(403).json({
         error: 'Las comisiones no están disponibles en este plan'
       });
