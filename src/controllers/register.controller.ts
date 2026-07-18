@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { supabase } from '../config/supabase';
 import { sendBienvenidaRegistro } from '../services/email.service';
+import { seedDemoData } from '../services/demoData.service';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -118,6 +119,11 @@ export const register = async (req: Request, res: Response) => {
       await supabase.from('tenants').delete().eq('id', tenant.id);
       return res.status(500).json({ error: 'Error al crear el usuario administrador' });
     }
+
+    // Sembrar datos de ejemplo para el onboarding (fire-and-forget: un error no frena el registro)
+    seedDemoData(tenant.id, user.id).catch((err) =>
+      console.error('[register] Error sembrando datos demo:', err)
+    );
 
     // Generar JWT
     const token = jwt.sign(

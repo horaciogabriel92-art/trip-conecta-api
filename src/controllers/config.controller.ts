@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { getTenantId } from '../utils/tenant';
 import { planAllows, getWorkflowMode } from '../utils/features';
+import { deleteDemoData } from '../services/demoData.service';
 
 const TRIP_CONECTA_TENANT_ID = '11111111-1111-1111-1111-111111111111';
 
@@ -315,5 +316,29 @@ export const getPublicPlans = async (req: Request, res: Response) => {
   } catch (err) {
     console.error('[config] Unexpected error fetching plans:', err);
     return res.status(500).json({ error: 'Error interno del servidor' });
+  }
+};
+
+/**
+ * DELETE /api/config/demo-data
+ * Elimina los datos de ejemplo (prefijo DEMO-) del tenant. Solo admin.
+ */
+export const deleteDemoDataController = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (user.role !== 'admin') {
+      return res.status(403).json({ error: 'Solo administradores pueden eliminar los datos de ejemplo' });
+    }
+
+    const tenantId = getTenantId(req);
+    const { eliminados } = await deleteDemoData(tenantId);
+
+    return res.json({
+      message: 'Datos de ejemplo eliminados',
+      eliminados
+    });
+  } catch (err) {
+    console.error('[config] Error eliminando datos demo:', err);
+    return res.status(500).json({ error: 'Error al eliminar los datos de ejemplo' });
   }
 };
