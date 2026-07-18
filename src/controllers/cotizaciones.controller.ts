@@ -454,196 +454,231 @@ export const getCotizacionById = async (req: Request, res: Response) => {
         }
         
         // Tercero: cargar relaciones por separado si la consulta principal funcionó
-        let pasajeros = [];
-        let vuelos = [];
-        let hospedajes = [];
-        let traslados = [];
-        let seguros = [];
-        let extras = [];
-        let paquete = null;
-        let vendedor = null;
-        
-        // Cargar vendedor
-        try {
-            if (cotizacion?.vendedor_id) {
-                const { data: v } = await supabase
-                    .from('users')
-                    .select('id, nombre, apellido, email, telefono')
-                    .eq('id', cotizacion.vendedor_id)
-                    .single();
-                vendedor = v;
-            }
-        } catch (e) { /* noop */ }
-
-        // Cargar pasajeros
-        try {
-            const { data: p } = await supabase
-                .from('cotizacion_pasajeros')
-                .select('*, pasajero:pasajero_id (*)')
-                .eq('tenant_id', tenantId)
-                .eq('cotizacion_id', id);
-            pasajeros = p || [];
-        } catch (e) { /* noop */ }
-
-        // Cargar vuelos desde tabla vuelos (cotizaciones manuales)
-        try {
-            const { data: v } = await supabase
-                .from('vuelos')
-                .select('*')
-                .eq('tenant_id', tenantId)
-                .eq('cotizacion_id', id);
-            vuelos = v || [];
-        } catch (e) { /* noop */ }
-
-        // Cargar hospedajes
-        try {
-            const { data: h } = await supabase
-                .from('hospedajes')
-                .select('*')
-                .eq('tenant_id', tenantId)
-                .eq('cotizacion_id', id);
-            hospedajes = h || [];
-        } catch (e) { /* noop */ }
-
-        // Cargar traslados
-        try {
-            const { data: t } = await supabase
-                .from('traslados')
-                .select('*')
-                .eq('tenant_id', tenantId)
-                .eq('cotizacion_id', id)
-                .order('orden', { ascending: true });
-            traslados = t || [];
-        } catch (e) { /* noop */ }
-
-        // Cargar seguros
-        try {
-            const { data: s } = await supabase
-                .from('seguros')
-                .select('*')
-                .eq('tenant_id', tenantId)
-                .eq('cotizacion_id', id);
-            seguros = s || [];
-        } catch (e) { /* noop */ }
-
-        // Cargar extras
-        try {
-            const { data: e } = await supabase
-                .from('extras')
-                .select('*')
-                .eq('tenant_id', tenantId)
-                .eq('cotizacion_id', id)
-                .order('orden', { ascending: true });
-            extras = e || [];
-        } catch (e) { /* noop */ }
-
-        // Si es cotización de paquete, cargar datos del paquete (vuelos, itinerario, etc.)
-        if (cotizacion?.paquete_id) {
-            try {
-                const { data: p } = await supabase
-                    .from('paquetes')
-                    .select('*')
-                    .eq('tenant_id', tenantId)
-                    .eq('id', cotizacion.paquete_id)
-                    .single();
-                paquete = p;
-                
-                // Si no hay vuelos en la tabla vuelos, usar los del paquete
-                if (vuelos.length === 0 && paquete?.vuelos) {
-                    vuelos = paquete.vuelos;
-                }
-            } catch (e) { /* noop */ }
-        }
-
-        // ========== CARGAR DATOS DE VENTA, COMPROBANTES Y PAGOS ==========
-        let venta = null;
-        let comprobantesPago: any[] = [];
-        let pagos: any[] = [];
-        
-        // SIEMPRE verificar si existe venta asociada (incluso si estado no es 'vendida')
-        // Esto maneja casos de inconsistencia donde la venta existe pero la cotización no se actualizó
-        try {
-            const { data: v } = await supabase
-                .from('ventas')
-                .select('*')
-                .eq('tenant_id', tenantId)
-                .eq('cotizacion_id', id)
-                .maybeSingle();  // Usar maybeSingle para no fallar si no existe
-            venta = v;
-            
-            if (venta && cotizacion?.estado !== 'vendida') {
-                console.warn(`[getCotizacionById] INCONSISTENCIA: Venta ${venta.id} existe pero cotización ${id} está en estado ${cotizacion?.estado}`);
-            }
-                
-            if (venta) {
-                // Cargar pagos del historial
+        // Las queries independientes se ejecutan en paralelo; cada loader captura
+        // sus propios errores y nunca rechaza (misma tolerancia a fallos que antes).
+        let [
+            vendedor,
+            pasajeros,
+            vuelos,
+            hospedajes,
+            traslados,
+            seguros,
+            extras,
+            venta
+        ] = await Promise.all([
+            // Cargar vendedor
+            (async () => {
                 try {
-                    const { data: pagosData } = await supabase
-                        .from('pagos_venta')
+                    if (cotizacion?.vendedor_id) {
+                        const { data: v } = await supabase
+                            .from('users')
+                            .select('id, nombre, apellido, email, telefono')
+                            .eq('id', cotizacion.vendedor_id)
+                            .single();
+                        return v;
+                    }
+                } catch (e) { /* noop */ }
+                return null;
+            })(),
+
+            // Cargar pasajeros
+            (async () => {
+                try {
+                    const { data: p } = await supabase
+                        .from('cotizacion_pasajeros')
+                        .select('*, pasajero:pasajero_id (*)')
+                        .eq('tenant_id', tenantId)
+                        .eq('cotizacion_id', id);
+                    return p || [];
+                } catch (e) { /* noop */ }
+                return [];
+            })(),
+
+            // Cargar vuelos desde tabla vuelos (cotizaciones manuales)
+            (async () => {
+                try {
+                    const { data: v } = await supabase
+                        .from('vuelos')
+                        .select('*')
+                        .eq('tenant_id', tenantId)
+                        .eq('cotizacion_id', id);
+                    return v || [];
+                } catch (e) { /* noop */ }
+                return [];
+            })(),
+
+            // Cargar hospedajes
+            (async () => {
+                try {
+                    const { data: h } = await supabase
+                        .from('hospedajes')
+                        .select('*')
+                        .eq('tenant_id', tenantId)
+                        .eq('cotizacion_id', id);
+                    return h || [];
+                } catch (e) { /* noop */ }
+                return [];
+            })(),
+
+            // Cargar traslados
+            (async () => {
+                try {
+                    const { data: t } = await supabase
+                        .from('traslados')
                         .select('*')
                         .eq('tenant_id', tenantId)
                         .eq('cotizacion_id', id)
-                        .order('fecha_pago', { ascending: false });
-                    pagos = pagosData || [];
+                        .order('orden', { ascending: true });
+                    return t || [];
                 } catch (e) { /* noop */ }
+                return [];
+            })(),
 
-                // Parsear comprobantes_pago_urls si existe
-                if (venta.comprobantes_pago_urls) {
+            // Cargar seguros
+            (async () => {
+                try {
+                    const { data: s } = await supabase
+                        .from('seguros')
+                        .select('*')
+                        .eq('tenant_id', tenantId)
+                        .eq('cotizacion_id', id);
+                    return s || [];
+                } catch (e) { /* noop */ }
+                return [];
+            })(),
+
+            // Cargar extras
+            (async () => {
+                try {
+                    const { data: e } = await supabase
+                        .from('extras')
+                        .select('*')
+                        .eq('tenant_id', tenantId)
+                        .eq('cotizacion_id', id)
+                        .order('orden', { ascending: true });
+                    return e || [];
+                } catch (e) { /* noop */ }
+                return [];
+            })(),
+
+            // SIEMPRE verificar si existe venta asociada (incluso si estado no es 'vendida')
+            // Esto maneja casos de inconsistencia donde la venta existe pero la cotización no se actualizó
+            (async () => {
+                try {
+                    const { data: v } = await supabase
+                        .from('ventas')
+                        .select('*')
+                        .eq('tenant_id', tenantId)
+                        .eq('cotizacion_id', id)
+                        .maybeSingle();  // Usar maybeSingle para no fallar si no existe
+                    return v;
+                } catch (e) { /* noop */ }
+                return null;
+            })()
+        ]);
+
+        if (venta && cotizacion?.estado !== 'vendida') {
+            console.warn(`[getCotizacionById] INCONSISTENCIA: Venta ${venta.id} existe pero cotización ${id} está en estado ${cotizacion?.estado}`);
+        }
+
+        // ========== CARGAR DATOS DE PAQUETE, COMPROBANTES Y PAGOS ==========
+        // Estas queries dependen de los resultados anteriores (paquete_id / venta)
+        // pero son independientes entre sí, por lo que también van en paralelo.
+        let paquete = null;
+        let comprobantesPago: any[] = [];
+        let pagos: any[] = [];
+
+        await Promise.all([
+            // Si es cotización de paquete, cargar datos del paquete (vuelos, itinerario, etc.)
+            (async () => {
+                if (cotizacion?.paquete_id) {
                     try {
-                        const urls = JSON.parse(venta.comprobantes_pago_urls);
-                        let idx = 0;
-                        for (const url of urls) {
-                            const filename = url.split('/').pop() || `comprobante_${idx + 1}`;
-                            const filePath = findComprobanteFile(filename);
-                            
-                            if (filePath) {
-                                comprobantesPago.push({
-                                    id: `comp_${idx}`,
-                                    nombre_archivo: filename,
-                                    url: url,
-                                    ruta_archivo: url,
-                                    es_descargable: true
-                                });
-                            }
-                            idx++;
+                        const { data: p } = await supabase
+                            .from('paquetes')
+                            .select('*')
+                            .eq('tenant_id', tenantId)
+                            .eq('id', cotizacion.paquete_id)
+                            .single();
+                        paquete = p;
+
+                        // Si no hay vuelos en la tabla vuelos, usar los del paquete
+                        if (vuelos.length === 0 && paquete?.vuelos) {
+                            vuelos = paquete.vuelos;
                         }
                     } catch (e) { /* noop */ }
                 }
-                
-                // También buscar en tabla comprobantes_pago si existe
-                try {
-                    const { data: comps } = await supabase
-                        .from('comprobantes_pago')
-                        .select('*')
-                        .eq('tenant_id', tenantId)
-                        .eq('venta_id', venta.id);
-                    if (comps && comps.length > 0) {
-                        // Merge comprobantes de la tabla con los de JSON
-                        const existingUrls = new Set(comprobantesPago.map((c: any) => c.ruta_archivo || c.url));
-                        for (const comp of comps) {
-                            const compUrl = `/uploads/comprobantes/${comp.ruta_archivo}`;
-                            if (!existingUrls.has(compUrl)) {
-                                const filePath = findComprobanteFile(comp.ruta_archivo);
-                                
+            })(),
+
+            // Si hay venta, cargar pagos y comprobantes
+            (async () => {
+                if (venta) {
+                    // Cargar pagos del historial
+                    try {
+                        const { data: pagosData } = await supabase
+                            .from('pagos_venta')
+                            .select('*')
+                            .eq('tenant_id', tenantId)
+                            .eq('cotizacion_id', id)
+                            .order('fecha_pago', { ascending: false });
+                        pagos = pagosData || [];
+                    } catch (e) { /* noop */ }
+
+                    // Parsear comprobantes_pago_urls si existe
+                    if (venta.comprobantes_pago_urls) {
+                        try {
+                            const urls = JSON.parse(venta.comprobantes_pago_urls);
+                            let idx = 0;
+                            for (const url of urls) {
+                                const filename = url.split('/').pop() || `comprobante_${idx + 1}`;
+                                const filePath = findComprobanteFile(filename);
+
                                 if (filePath) {
                                     comprobantesPago.push({
-                                        id: comp.id,
-                                        nombre_archivo: comp.nombre_archivo,
-                                        url: compUrl,
-                                        ruta_archivo: compUrl,
+                                        id: `comp_${idx}`,
+                                        nombre_archivo: filename,
+                                        url: url,
+                                        ruta_archivo: url,
                                         es_descargable: true
                                     });
                                 }
+                                idx++;
+                            }
+                        } catch (e) { /* noop */ }
+                    }
+
+                    // También buscar en tabla comprobantes_pago si existe
+                    try {
+                        const { data: comps } = await supabase
+                            .from('comprobantes_pago')
+                            .select('*')
+                            .eq('tenant_id', tenantId)
+                            .eq('venta_id', venta.id);
+                        if (comps && comps.length > 0) {
+                            // Merge comprobantes de la tabla con los de JSON
+                            const existingUrls = new Set(comprobantesPago.map((c: any) => c.ruta_archivo || c.url));
+                            for (const comp of comps) {
+                                const compUrl = `/uploads/comprobantes/${comp.ruta_archivo}`;
+                                if (!existingUrls.has(compUrl)) {
+                                    const filePath = findComprobanteFile(comp.ruta_archivo);
+
+                                    if (filePath) {
+                                        comprobantesPago.push({
+                                            id: comp.id,
+                                            nombre_archivo: comp.nombre_archivo,
+                                            url: compUrl,
+                                            ruta_archivo: compUrl,
+                                            es_descargable: true
+                                        });
+                                    }
+                                }
                             }
                         }
+                    } catch (e) {
+                        // La tabla puede no existir, ignorar error
                     }
-                } catch (e) {
-                    // La tabla puede no existir, ignorar error
                 }
-            }
-        } catch (e) {
-            // noop
-        }
+            })()
+        ]);
         
         // Mapear vuelos para compatibilidad de campos (origen_nombre -> origen_ciudad, etc.)
         const vuelosMapeados = vuelos.map((v: any) => ({
@@ -1094,7 +1129,8 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
         num_pasajeros,
         fecha_salida,
         amadeus_pnr_raw,
-        notas_internas
+        notas_internas,
+        imagen_url
     } = req.body;
     const user = (req as any).user;
 
@@ -1408,7 +1444,8 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
             margen_agencia_monto: margen_agencia_monto !== undefined ? margen_agencia_monto : cotizacionExistente.margen_agencia_monto,
             comision_vendedor_porcentaje: comision_vendedor_porcentaje !== undefined ? comision_vendedor_porcentaje : cotizacionExistente.comision_vendedor_porcentaje,
             comision_vendedor_monto_estimado: comision_vendedor_monto_estimado !== undefined ? comision_vendedor_monto_estimado : cotizacionExistente.comision_vendedor_monto_estimado,
-            notas_internas: notas_internas !== undefined ? notas_internas : cotizacionExistente.notas_internas
+            notas_internas: notas_internas !== undefined ? notas_internas : cotizacionExistente.notas_internas,
+            imagen_url: imagen_url !== undefined ? imagen_url : cotizacionExistente.imagen_url
         };
 
         if (user.role === 'admin' && vendedor_id_body) {
@@ -1652,7 +1689,8 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
             comision_vendedor_monto_estimado,
             num_pasajeros,
             fecha_salida,
-            notas_internas
+            notas_internas,
+            imagen_url
         } = req.body;
 
         const user = (req as any).user;
@@ -2007,6 +2045,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                 num_pasajeros: num_pasajeros ?? pasajerosVinculados.length ?? 1,
                 fecha_salida: fecha_salida || null,
                 notas_internas: notas_internas || null,
+                imagen_url: imagen_url || null,
                 tenant_id: tenantId
             })
             .select()
