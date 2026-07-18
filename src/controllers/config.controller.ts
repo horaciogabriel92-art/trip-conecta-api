@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { getTenantId } from '../utils/tenant';
 import { planAllows, getWorkflowMode } from '../utils/features';
-import { deleteDemoData } from '../services/demoData.service';
+import { deleteDemoData, seedDemoData } from '../services/demoData.service';
 
 const TRIP_CONECTA_TENANT_ID = '11111111-1111-1111-1111-111111111111';
 
@@ -340,5 +340,40 @@ export const deleteDemoDataController = async (req: Request, res: Response) => {
   } catch (err) {
     console.error('[config] Error eliminando datos demo:', err);
     return res.status(500).json({ error: 'Error al eliminar los datos de ejemplo' });
+  }
+};
+
+/**
+ * POST /api/config/demo-data
+ * Siembra los datos de ejemplo en el tenant del usuario. Solo admin.
+ * Idempotente: rechaza si el tenant ya tiene datos DEMO-.
+ */
+export const seedDemoDataController = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (user.role !== 'admin') {
+      return res.status(403).json({ error: 'Solo administradores pueden cargar los datos de ejemplo' });
+    }
+
+    const tenantId = getTenantId(req);
+
+    // No duplicar: si ya hay datos DEMO-, rechazar
+    const { data: demoExistente } = await supabase
+      .from('paquetes')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .like('codigo', 'DEMO-%')
+      .limit(1);
+
+    if (demoExistente && demoExistente.length > 0) {
+      return res.status(409).json({ error: 'Este tenant ya tiene datos de ejemplo cargados' });
+    }
+
+    await seedDemoData(tenantId, user.userId);
+
+    return res.status(201).json({ message: 'Datos de ejemplo cargados' });
+  } catch (err) {
+    console.error('[config] Error sembrando datos demo:', err);
+    return res.status(500).json({ error: 'Error al cargar los datos de ejemplo' });
   }
 };
