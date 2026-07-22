@@ -136,7 +136,7 @@ export const seedDemoData = async (tenantId: string, userId: string): Promise<vo
                 apellido: 'Rodríguez',
                 email: 'carlos.rodriguez@ejemplo.com',
                 telefono: '+598 98 654 321',
-                estado: 'prospecto',
+                estado: 'activo',
                 fuente_lead: 'INSTAGRAM',
                 tags: ['EJEMPLO'],
                 registrado_por: userId,
