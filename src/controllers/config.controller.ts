@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { getTenantId } from '../utils/tenant';
 import { planAllows, getWorkflowMode } from '../utils/features';
-import { deleteDemoData, seedDemoData } from '../services/demoData.service';
+import { deleteDemoData, hasDemoData, seedDemoData } from '../services/demoData.service';
 
 const TRIP_CONECTA_TENANT_ID = '11111111-1111-1111-1111-111111111111';
 
@@ -358,22 +358,15 @@ export const seedDemoDataController = async (req: Request, res: Response) => {
     const tenantId = getTenantId(req);
 
     // No duplicar: si ya hay datos DEMO-, rechazar
-    const { data: demoExistente } = await supabase
-      .from('paquetes')
-      .select('id')
-      .eq('tenant_id', tenantId)
-      .like('codigo', 'DEMO-%')
-      .limit(1);
-
-    if (demoExistente && demoExistente.length > 0) {
+    if (await hasDemoData(tenantId)) {
       return res.status(409).json({ error: 'Este tenant ya tiene datos de ejemplo cargados' });
     }
 
     await seedDemoData(tenantId, user.userId);
 
     return res.status(201).json({ message: 'Datos de ejemplo cargados' });
-  } catch (err) {
+  } catch (err: any) {
     console.error('[config] Error sembrando datos demo:', err);
-    return res.status(500).json({ error: 'Error al cargar los datos de ejemplo' });
+    return res.status(500).json({ error: 'Error al cargar los datos de ejemplo', details: err?.message });
   }
 };
