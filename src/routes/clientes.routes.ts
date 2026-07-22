@@ -40,4 +40,7 @@ router.post('/', authenticateToken, clientesController.createCliente);
 // Actualizar cliente
 router.put('/:id', authenticateToken, clientesController.updateCliente);
 
+// Eliminar cliente
+router.delete('/:id', authenticateToken, clientesController.deleteCliente);
+
 export default router;

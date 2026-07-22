@@ -22,9 +22,24 @@ export const getClientes = async (req: Request, res: Response) => {
             .select('*', { count: 'exact' })
             .eq('tenant_id', tenantId);
         
-        // Si es vendedor (no admin), solo ve sus clientes
+        // Si es vendedor (no admin), solo ve clientes que haya tocado
         if (user?.role !== 'admin') {
-            query = query.eq('registrado_por', user?.userId);
+            const { data: asociaciones } = await supabase
+                .from('cliente_vendedores')
+                .select('cliente_id')
+                .eq('tenant_id', tenantId)
+                .eq('vendedor_id', user?.userId);
+            
+            const clienteIds = (asociaciones || []).map(a => a.cliente_id);
+            
+            if (clienteIds.length === 0) {
+                return res.json({
+                    data: [],
+                    meta: { total: 0, page: parseInt(page as string), limit: parseInt(limit as string), totalPages: 0 }
+                });
+            }
+            
+            query = query.in('id', clienteIds);
         }
         
         // Búsqueda fuzzy si hay query
@@ -78,9 +93,21 @@ export const buscarClientes = async (req: Request, res: Response) => {
             .eq('tenant_id', tenantId)
             .or(`nombre.ilike.${searchTerm},apellido.ilike.${searchTerm},email.ilike.${searchTerm},documento.ilike.${searchTerm}`);
         
-        // Si es vendedor (no admin), solo busca en sus clientes
+        // Si es vendedor (no admin), solo busca en clientes que haya tocado
         if (user?.role !== 'admin') {
-            dbQuery = dbQuery.eq('registrado_por', user?.userId);
+            const { data: asociaciones } = await supabase
+                .from('cliente_vendedores')
+                .select('cliente_id')
+                .eq('tenant_id', tenantId)
+                .eq('vendedor_id', user?.userId);
+            
+            const clienteIds = (asociaciones || []).map(a => a.cliente_id);
+            
+            if (clienteIds.length === 0) {
+                return res.json({ data: [] });
+            }
+            
+            dbQuery = dbQuery.in('id', clienteIds);
         }
         
         const { data, error } = await dbQuery.limit(10);
@@ -119,9 +146,19 @@ export const getClienteById = async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Cliente no encontrado' });
         }
         
-        // Si es vendedor (no admin), verificar que sea su cliente
-        if (user?.role !== 'admin' && cliente.registrado_por !== user?.userId) {
-            return res.status(403).json({ error: 'No autorizado para ver este cliente' });
+        // Si es vendedor (no admin), verificar que haya tocado el cliente
+        if (user?.role !== 'admin') {
+            const { data: asociacion } = await supabase
+                .from('cliente_vendedores')
+                .select('id')
+                .eq('tenant_id', tenantId)
+                .eq('cliente_id', id)
+                .eq('vendedor_id', user?.userId)
+                .single();
+            
+            if (!asociacion) {
+                return res.status(403).json({ error: 'No autorizado para ver este cliente' });
+            }
         }
         
         // Pasajeros asociados (perfiles de viajeros)
@@ -308,6 +345,20 @@ export const createCliente = async (req: Request, res: Response) => {
             // No fallamos todo, el cliente ya se creó
         }
         
+        // Asociar vendedor creador al cliente para control de visibilidad
+        const { error: asocError } = await supabase
+            .from('cliente_vendedores')
+            .insert({
+                cliente_id: cliente.id,
+                vendedor_id: userId,
+                tenant_id: tenantId
+            });
+        
+        if (asocError) {
+            console.error('Error asociando vendedor al cliente:', asocError);
+            // No fallamos todo, el cliente ya se creó
+        }
+        
         // Registrar en historial
         await supabase
             .from('historial_cliente')
@@ -342,20 +393,17 @@ export const updateCliente = async (req: Request, res: Response) => {
     const user = (req as any).user;
     const userId = user?.userId;
     
-    // Verificar que el vendedor pueda editar este cliente
+    // Verificar que el vendedor pueda editar este cliente (admin o vendedor asociado)
     if (user?.role !== 'admin') {
-        const { data: clienteCheck, error: checkError } = await supabase
-            .from('clientes')
-            .select('registrado_por')
+        const { data: asociacion, error: checkError } = await supabase
+            .from('cliente_vendedores')
+            .select('id')
             .eq('tenant_id', tenantId)
-            .eq('id', id)
+            .eq('cliente_id', id)
+            .eq('vendedor_id', userId)
             .single();
         
-        if (checkError || !clienteCheck) {
-            return res.status(404).json({ error: 'Cliente no encontrado' });
-        }
-        
-        if (clienteCheck.registrado_por !== userId) {
+        if (checkError || !asociacion) {
             return res.status(403).json({ error: 'No autorizado para editar este cliente' });
         }
     }
@@ -395,6 +443,19 @@ export const updateCliente = async (req: Request, res: Response) => {
         if (!cliente) {
             console.error('[updateCliente] Cliente no encontrado:', id);
             return res.status(404).json({ error: 'Cliente no encontrado' });
+        }
+        
+        // Asegurar que el vendedor que editó quede asociado al cliente
+        const { error: asocError } = await supabase
+            .from('cliente_vendedores')
+            .upsert({
+                cliente_id: id,
+                vendedor_id: userId,
+                tenant_id: tenantId
+            }, { onConflict: 'cliente_id,vendedor_id' });
+        
+        if (asocError) {
+            console.error('Error asociando vendedor al cliente:', asocError);
         }
         
         // Registrar en historial
@@ -519,5 +580,65 @@ export const getPasajerosByCliente = async (req: Request, res: Response) => {
         res.json({ data });
     } catch (error: any) {
         res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+/**
+ * Eliminar cliente
+ * DELETE /clientes/:id
+ * Admin: puede eliminar cualquier cliente del tenant.
+ * Vendedor: solo puede eliminar clientes que haya tocado.
+ */
+export const deleteCliente = async (req: Request, res: Response) => {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    const user = (req as any).user;
+    const userId = user?.userId;
+
+    try {
+        // Verificar permisos
+        if (user?.role !== 'admin') {
+            const { data: asociacion } = await supabase
+                .from('cliente_vendedores')
+                .select('id')
+                .eq('tenant_id', tenantId)
+                .eq('cliente_id', id)
+                .eq('vendedor_id', userId)
+                .single();
+
+            if (!asociacion) {
+                return res.status(403).json({ error: 'No autorizado para eliminar este cliente' });
+            }
+        }
+
+        // Verificar que exista y pertenezca al tenant
+        const { data: cliente } = await supabase
+            .from('clientes')
+            .select('id')
+            .eq('id', id)
+            .eq('tenant_id', tenantId)
+            .single();
+
+        if (!cliente) {
+            return res.status(404).json({ error: 'Cliente no encontrado' });
+        }
+
+        // Eliminación en cascada se encarga de pasajeros, cotizacion_pasajeros,
+        // historial_cliente, cliente_vendedores, etc. según FKs configuradas.
+        const { error } = await supabase
+            .from('clientes')
+            .delete()
+            .eq('id', id)
+            .eq('tenant_id', tenantId);
+
+        if (error) {
+            console.error('Error deleting cliente:', error);
+            return res.status(500).json({ error: 'Error al eliminar cliente', details: error.message });
+        }
+
+        res.json({ message: 'Cliente eliminado correctamente' });
+    } catch (error: any) {
+        console.error('Error in deleteCliente:', error);
+        res.status(500).json({ error: 'Internal server error', details: error.message });
     }
 };
