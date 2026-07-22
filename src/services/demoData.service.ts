@@ -206,7 +206,6 @@ export const seedDemoData = async (tenantId: string, userId: string): Promise<vo
                 num_pasajeros: 2,
                 paquete_data: snapshotPaquete('DEMO-EUR', 12),
                 fecha_creacion: dias(-3),
-                fecha_envio: dias(-2),
                 fecha_expiracion: dias(4)
             },
             {
