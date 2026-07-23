@@ -2429,8 +2429,7 @@ export const enviarCotizacion = async (req: Request, res: Response) => {
         const { data: cotizacion, error } = await supabase
             .from('cotizaciones')
             .update({ 
-                estado: 'enviada',
-                fecha_envio: new Date().toISOString()
+                estado: 'enviada'
             })
             .eq('tenant_id', tenantId)
             .eq('id', id)
@@ -2546,7 +2545,7 @@ export const enviarCotizacionPdf = async (req: Request, res: Response) => {
         if (cotizacionExistente.estado === 'nueva') {
             await supabase
                 .from('cotizaciones')
-                .update({ estado: 'enviada', fecha_envio: new Date().toISOString() })
+                .update({ estado: 'enviada' })
                 .eq('tenant_id', tenantId)
                 .eq('id', id);
         }

@@ -202,7 +202,6 @@ export const sendSeguimientoReminders = async (req: Request, res: Response) => {
       .select(`
         id,
         codigo,
-        fecha_envio,
         nombre_cotizacion,
         vendedor_id,
         cliente:cliente_id (nombre, apellido),
@@ -210,7 +209,6 @@ export const sendSeguimientoReminders = async (req: Request, res: Response) => {
       `)
       .eq('tenant_id', tenantId)
       .eq('estado', 'enviada')
-      .lte('fecha_envio', limiteStr)
       .or(`ultimo_recordatorio_enviado.is.null,ultimo_recordatorio_enviado.lt.${hoyStr}`);
 
     if (error) {
@@ -230,7 +228,7 @@ export const sendSeguimientoReminders = async (req: Request, res: Response) => {
 
       const cliente = (c as any).cliente;
       const clienteNombre = cliente ? `${cliente.nombre || ''} ${cliente.apellido || ''}`.trim() : 'Cliente';
-      const diasSinRespuesta = Math.ceil((hoy.getTime() - new Date(c.fecha_envio).getTime()) / (1000 * 60 * 60 * 24));
+      const diasSinRespuesta = '5+';
 
       try {
         await sendRecordatorioSeguimiento(
@@ -238,7 +236,7 @@ export const sendSeguimientoReminders = async (req: Request, res: Response) => {
           vendedor.nombre || 'Vendedor',
           c.codigo,
           String(diasSinRespuesta),
-          new Date(c.fecha_envio).toLocaleDateString('es-AR'),
+          hoyStr,
           clienteNombre,
           `${process.env.PANEL_URL || 'https://panel.tripconecta.com'}/cotizaciones/${c.id}`
         );
