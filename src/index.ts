@@ -78,6 +78,7 @@ import recordatoriosRoutes from './routes/recordatorios.routes';
 import configRoutes from './routes/config.routes';
 import billingRoutes from './routes/billing.routes';
 import dashboardRoutes from './routes/dashboard.routes';
+import publicRoutes from './routes/public.routes';
 import { webhook as stripeWebhook } from './controllers/billing.controller';
 app.use('/api/auth', express.json(), authRoutes);
 app.use('/api/register', registerLimiter, express.json(), registerRoutes);
@@ -95,6 +96,7 @@ app.use('/api/jobs', jobsLimiter, express.json(), jobsRoutes);
 app.use('/api/reportes', reportesLimiter, express.json(), reportesRoutes);
 app.use('/api/config', express.json(), configRoutes);
 app.use('/api/dashboard', express.json(), dashboardRoutes);
+app.use('/api/public', express.json(), publicRoutes);
 
 // Stripe webhook necesita body raw para validar firma
 app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), stripeWebhook);
