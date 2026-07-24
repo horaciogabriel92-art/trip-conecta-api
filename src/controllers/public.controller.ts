@@ -11,8 +11,33 @@ import { isFeatureEnabled, planAllows, getEffectivePlan } from '../utils/feature
 
 const DEFAULT_LANDING = {
   activo: true,
+  template: 'classic',
   titulo: '',
   descripcion: '',
+  hero: {
+    imagen_url: '',
+    eyebrow: '',
+    titulo: '',
+    subtitulo: '',
+    cta_texto: '',
+    cta_url: ''
+  },
+  cta_final: {
+    imagen_url: '',
+    titulo: '',
+    subtitulo: '',
+    cta_texto: ''
+  },
+  features: {
+    titulo: '',
+    subtitulo: '',
+    items: [
+      { icono: 'Shield', titulo: 'Seguridad', descripcion: 'Operadores certificados y asistencia 24hs.' },
+      { icono: 'Users', titulo: 'Asesores', descripcion: 'Especialistas que te acompañan en todo.' },
+      { icono: 'CreditCard', titulo: 'Flexibilidad', descripcion: 'Reservá con señal y pagá en cuotas.' },
+      { icono: 'Gem', titulo: 'Exclusividad', descripcion: 'Alojamientos seleccionados a mano.' }
+    ]
+  },
   whatsapp: '',
   telefono: '',
   email: '',
@@ -36,6 +61,19 @@ function normalizeLanding(landing: any) {
   return {
     ...DEFAULT_LANDING,
     ...(landing || {}),
+    hero: {
+      ...DEFAULT_LANDING.hero,
+      ...(landing?.hero || {})
+    },
+    cta_final: {
+      ...DEFAULT_LANDING.cta_final,
+      ...(landing?.cta_final || {})
+    },
+    features: {
+      ...DEFAULT_LANDING.features,
+      ...(landing?.features || {}),
+      items: landing?.features?.items || DEFAULT_LANDING.features.items
+    },
     redes_sociales: { ...DEFAULT_LANDING.redes_sociales, ...(landing?.redes_sociales || {}) },
     footer_links: landing?.footer_links || DEFAULT_LANDING.footer_links,
     botones_extra: landing?.botones_extra || DEFAULT_LANDING.botones_extra,
