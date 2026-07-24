@@ -132,7 +132,8 @@ function mapearPaquetePublico(p: any) {
     vuelos: p.vuelos || [],
     hoteles: p.hoteles || [],
     comision_monto_usd: p.comision_monto_usd,
-    politicas_cancelacion: p.politicas_cancelacion
+    politicas_cancelacion: p.politicas_cancelacion,
+    visible: p.visible ?? true
   };
 }
 
@@ -185,6 +186,7 @@ export const getPublicLanding = async (req: Request, res: Response) => {
       .select('*')
       .eq('tenant_id', tenant.id)
       .eq('estado', 'activo')
+      .eq('visible', true)
       .order('fecha_creacion', { ascending: false });
 
     res.json({
@@ -230,6 +232,7 @@ export const getPublicPaquete = async (req: Request, res: Response) => {
       .eq('id', id)
       .eq('tenant_id', tenant.id)
       .eq('estado', 'activo')
+      .eq('visible', true)
       .single();
 
     if (error || !paquete) {
@@ -325,6 +328,7 @@ export const postPublicCotizar = async (req: Request, res: Response) => {
       .eq('id', paquete_id)
       .eq('tenant_id', tenant.id)
       .eq('estado', 'activo')
+      .eq('visible', true)
       .single();
 
     if (paqueteError || !paquete) {

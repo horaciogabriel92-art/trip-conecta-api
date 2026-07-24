@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS paquetes (
   cupos_disponibles INTEGER DEFAULT 0,
   cupos_totales INTEGER DEFAULT 0,
   estado VARCHAR(20) DEFAULT 'activo' CHECK (estado IN ('activo', 'completo', 'cancelado', 'eliminado')),
+  visible BOOLEAN DEFAULT true,
   creado_por UUID REFERENCES users(id),
   fecha_creacion TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   fecha_actualizacion TIMESTAMP WITH TIME ZONE DEFAULT NOW()

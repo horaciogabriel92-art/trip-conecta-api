@@ -41,6 +41,7 @@ interface PaqueteFrontend {
   fecha_salida?: string;
   estado?: string;
   status?: string;
+  visible?: boolean;
   imagen_url?: string;
   imagen_principal?: string;
   incluye?: string[];
@@ -79,8 +80,19 @@ function mapearPaqueteBD(data: PaqueteFrontend): any {
   // duracion_dias (BD) = duracion (frontend)
   paqueteBD.duracion_dias = data.duracion_dias || data.duracion || 7;
 
-  // estado (BD) = status (frontend)
-  paqueteBD.estado = truncar(data.estado || data.status || 'activo', 20);
+  // estado (BD) = estado o status (frontend), solo si se envía explícitamente
+  if (data.estado || data.status) {
+    paqueteBD.estado = truncar(data.estado || data.status, 20);
+  }
+
+  // visible: booleano separado del estado operativo; por compatibilidad status='inactivo' => visible=false
+  if (data.visible !== undefined) {
+    paqueteBD.visible = data.visible;
+  } else if (data.status === 'inactivo') {
+    paqueteBD.visible = false;
+  } else if (data.status === 'activo') {
+    paqueteBD.visible = true;
+  }
 
   // imagen_principal (BD) = imagen_url (frontend)
   if (data.imagen_url || data.imagen_principal) {
@@ -160,8 +172,9 @@ function mapearPaqueteFrontend(data: any): PaqueteFrontend {
     precio_doble: data.precio_doble || data.precio_base,
     precio_triple: data.precio_triple,
     precio_cuadruple: data.precio_cuadruple,
-    status: data.estado,
+    status: data.visible === false ? 'inactivo' : data.estado || 'activo',
     estado: data.estado,
+    visible: data.visible ?? true,
     imagen_url: data.imagen_principal,
     imagen_principal: data.imagen_principal,
     fecha_salida: data.fecha_salida,
@@ -188,6 +201,7 @@ export const getAllPaquetes = async (req: Request, res: Response) => {
             .select('*')
             .eq('tenant_id', tenantId)
             .neq('estado', 'eliminado')
+            .eq('visible', true)
             .order('fecha_creacion', { ascending: false });
 
         if (error) {
@@ -242,10 +256,11 @@ export const createPaquete = async (req: Request, res: Response) => {
         // Mapear al formato de la BD
         const dataBD = mapearPaqueteBD(dataFrontend);
         
-        // Asegurar campos requeridos
+        // Asegurar campos requeridos y default visible
         if (!dataBD.titulo) dataBD.titulo = 'Paquete sin título';
         if (!dataBD.precio_base) dataBD.precio_base = 0;
         if (!dataBD.duracion_dias) dataBD.duracion_dias = 7;
+        if (dataBD.visible === undefined) dataBD.visible = true;
 
         const { data: paquete, error } = await supabase
             .from('paquetes')
