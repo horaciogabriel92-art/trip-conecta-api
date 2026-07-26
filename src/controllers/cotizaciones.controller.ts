@@ -475,6 +475,7 @@ export const getCotizacionById = async (req: Request, res: Response) => {
             traslados,
             seguros,
             extras,
+            cruceros,
             venta
         ] = await Promise.all([
             // Cargar vendedor
@@ -568,6 +569,20 @@ export const getCotizacionById = async (req: Request, res: Response) => {
                         .eq('cotizacion_id', id)
                         .order('orden', { ascending: true });
                     return e || [];
+                } catch (e) { /* noop */ }
+                return [];
+            })(),
+
+            // Cargar cruceros
+            (async () => {
+                try {
+                    const { data: c } = await supabase
+                        .from('cruceros')
+                        .select('*')
+                        .eq('tenant_id', tenantId)
+                        .eq('cotizacion_id', id)
+                        .order('orden', { ascending: true });
+                    return c || [];
                 } catch (e) { /* noop */ }
                 return [];
             })(),
@@ -713,6 +728,7 @@ export const getCotizacionById = async (req: Request, res: Response) => {
             traslados,
             seguros,
             extras,
+            cruceros,
             paquete,
             // Datos de venta (solo para admin/vendedor cuando está vendida)
             venta,
@@ -733,6 +749,7 @@ export const getCotizacionById = async (req: Request, res: Response) => {
             precio_traslados: paqueteDataPrecios.precio_traslados ?? cotizacion?.precio_traslados ?? 0,
             precio_seguros: paqueteDataPrecios.precio_seguros ?? cotizacion?.precio_seguros ?? 0,
             precio_extras: paqueteDataPrecios.precio_extras ?? cotizacion?.precio_extras ?? 0,
+            precio_cruceros: paqueteDataPrecios.precio_cruceros ?? cotizacion?.precio_cruceros ?? 0,
             precio_subtotal: paqueteDataPrecios.precio_subtotal ?? cotizacion?.precio_subtotal ?? 0,
             precio_impuestos: paqueteDataPrecios.precio_impuestos ?? cotizacion?.precio_impuestos ?? 0,
         };
@@ -1138,6 +1155,7 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
         traslados,
         seguros,
         extras,
+        cruceros,
         itinerario,
         itinerario_manual,
         incluye,
@@ -1348,6 +1366,7 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
                 moneda: h.moneda || 'USD',
                 es_opcion: h.es_opcion || false,
                 seleccionado: h.seleccionado || false,
+                incluido: h.incluido !== undefined ? h.incluido : (h.es_opcion !== true),
                 notas: h.notas
             }));
 
@@ -1415,6 +1434,35 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
             if (extrasError) console.error('Error updating extras:', extrasError);
         }
 
+        // 6e. Sincronizar cruceros
+        await supabase.from('cruceros').delete().eq('tenant_id', tenantId).eq('cotizacion_id', id);
+        const crucerosValidos = (cruceros || []).filter((c: any) => c.nombre);
+        if (crucerosValidos.length > 0) {
+            const crucerosInsert = crucerosValidos.map((c: any, index: number) => ({
+                cotizacion_id: id,
+                tenant_id: tenantId,
+                nombre: c.nombre,
+                compania: c.compania,
+                barco: c.barco,
+                puerto_embarque: c.puerto_embarque,
+                puerto_desembarque: c.puerto_desembarque,
+                fecha_embarque: c.fecha_embarque,
+                fecha_desembarque: c.fecha_desembarque,
+                cabina: c.cabina,
+                tipo_habitacion: c.tipo_habitacion,
+                regimen: c.regimen,
+                precio_por_persona: c.precio_por_persona,
+                moneda: c.moneda || 'USD',
+                incluido: c.incluido !== false,
+                es_opcion: c.es_opcion || false,
+                seleccionado: c.seleccionado || false,
+                notas: c.notas,
+                orden: c.orden || index + 1
+            }));
+            const { error: crucerosError } = await supabase.from('cruceros').insert(crucerosInsert);
+            if (crucerosError) console.error('Error updating cruceros:', crucerosError);
+        }
+
         // 7. Sincronizar pasajeros: eliminar existentes + insertar nuevos
         await supabase.from('cotizacion_pasajeros').delete().eq('tenant_id', tenantId).eq('cotizacion_id', id);
 
@@ -1448,6 +1496,7 @@ export const updateCotizacionManual = async (req: Request, res: Response) => {
             precio_traslados: precios?.traslados ?? 0,
             precio_seguros: precios?.seguros ?? 0,
             precio_extras: precios?.extras ?? 0,
+            precio_cruceros: precios?.cruceros ?? 0,
             precio_subtotal: precios?.subtotal ?? 0,
             precio_impuestos: precios?.impuestos ?? 0
         };
@@ -1708,6 +1757,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
             traslados,
             seguros,
             extras,
+            cruceros,
             itinerario,
             itinerario_manual,
             incluye,
@@ -2052,6 +2102,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
             precio_traslados: precios?.traslados ?? 0,
             precio_seguros: precios?.seguros ?? 0,
             precio_extras: precios?.extras ?? 0,
+            precio_cruceros: precios?.cruceros ?? 0,
             precio_subtotal: precios?.subtotal ?? 0,
             precio_impuestos: precios?.impuestos ?? 0
         };
@@ -2195,6 +2246,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                 moneda: h.moneda || 'USD',
                 es_opcion: h.es_opcion || false,
                 seleccionado: h.seleccionado || false,
+                incluido: h.incluido !== undefined ? h.incluido : (h.es_opcion !== true),
                 notas: h.notas
             }));
 
@@ -2279,6 +2331,40 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
 
             if (extrasError) {
                 console.error('Error creating extras:', extrasError);
+            }
+        }
+
+        // ========== PASO 5e: GUARDAR CRUCEROS ==========
+        const crucerosValidos = (cruceros || []).filter((c: any) => c.nombre);
+        if (crucerosValidos.length > 0) {
+            const crucerosInsert = crucerosValidos.map((c: any, index: number) => ({
+                cotizacion_id: cotizacion.id,
+                tenant_id: tenantId,
+                nombre: c.nombre,
+                compania: c.compania,
+                barco: c.barco,
+                puerto_embarque: c.puerto_embarque,
+                puerto_desembarque: c.puerto_desembarque,
+                fecha_embarque: c.fecha_embarque,
+                fecha_desembarque: c.fecha_desembarque,
+                cabina: c.cabina,
+                tipo_habitacion: c.tipo_habitacion,
+                regimen: c.regimen,
+                precio_por_persona: c.precio_por_persona,
+                moneda: c.moneda || 'USD',
+                incluido: c.incluido !== false,
+                es_opcion: c.es_opcion || false,
+                seleccionado: c.seleccionado || false,
+                notas: c.notas,
+                orden: c.orden || index + 1
+            }));
+
+            const { error: crucerosError } = await supabase
+                .from('cruceros')
+                .insert(crucerosInsert);
+
+            if (crucerosError) {
+                console.error('Error creating cruceros:', crucerosError);
             }
         }
 
