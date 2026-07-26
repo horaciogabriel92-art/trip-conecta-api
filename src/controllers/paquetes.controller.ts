@@ -15,6 +15,7 @@ interface Hotel {
   nombre: string;
   link?: string;
   ciudad?: string;
+  incluido?: boolean;
   precios: {
     doble: number;
     triple?: number;
@@ -148,7 +149,9 @@ function mapearPaqueteBD(data: PaqueteFrontend): any {
     paqueteBD.vuelos = Array.isArray(data.vuelos) ? data.vuelos : [];
   }
   if (data.hoteles) {
-    paqueteBD.hoteles = Array.isArray(data.hoteles) ? data.hoteles : [];
+    paqueteBD.hoteles = Array.isArray(data.hoteles)
+      ? data.hoteles.map((h: any) => ({ ...h, incluido: h.incluido !== false }))
+      : [];
   }
   if (data.comision_monto_usd !== undefined && data.comision_monto_usd !== null) {
     paqueteBD.comision_monto_usd = data.comision_monto_usd;
@@ -186,7 +189,7 @@ function mapearPaqueteFrontend(data: any): PaqueteFrontend {
     galeria: data.galeria || [],
     recursos_vendedores: data.recursos_vendedores || [],
     vuelos: data.vuelos || [],
-    hoteles: data.hoteles || [],
+    hoteles: (data.hoteles || []).map((h: any) => ({ ...h, incluido: h.incluido !== false })),
     comision_monto_usd: data.comision_monto_usd,
     fecha_creacion: data.fecha_creacion,
     fecha_actualizacion: data.fecha_actualizacion

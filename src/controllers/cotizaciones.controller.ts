@@ -6,6 +6,7 @@ import { sendEmailAsync, getAdminEmails, sendCotizacionPdfEmail } from '../servi
 import { crearNotificacionInterna } from '../services/notificaciones.service';
 import { findComprobanteFile } from '../utils/fileSearch';
 import { getTenantId } from '../utils/tenant';
+import { loadAirportTranslations, translateFlightAirports } from '../utils/airports';
 import { checkFeatureEnabled, checkWorkflowMode } from '../utils/features';
 import { randomDigits } from '../utils/cryptoRandom';
 
@@ -411,6 +412,9 @@ export const getCotizacionById = async (req: Request, res: Response) => {
     const user = (req as any).user;
 
     try {
+        // Cargar traducciones de aeropuertos una sola vez para toda la request
+        const airportTranslations = await loadAirportTranslations('es');
+
         // Primero: consulta simple sin joins para verificar existencia y permisos
         let basicQuery = supabase
             .from('cotizaciones')
@@ -688,13 +692,16 @@ export const getCotizacionById = async (req: Request, res: Response) => {
         ]);
         
         // Mapear vuelos para compatibilidad de campos (origen_nombre -> origen_ciudad, etc.)
-        const vuelosMapeados = vuelos.map((v: any) => ({
-            ...v,
-            origen_ciudad: v.origen_ciudad || v.origen_nombre || v.origen,
-            destino_ciudad: v.destino_ciudad || v.destino_nombre || v.destino,
-            aerolinea_nombre: v.aerolinea_nombre || v.aerolinea,
-            aerolinea_codigo: v.aerolinea_codigo || v.aerolinea?.substring(0, 2)?.toUpperCase() || 'AV'
-        }));
+        const vuelosMapeados = translateFlightAirports(
+            vuelos.map((v: any) => ({
+                ...v,
+                origen_ciudad: v.origen_ciudad || v.origen_nombre || v.origen,
+                destino_ciudad: v.destino_ciudad || v.destino_nombre || v.destino,
+                aerolinea_nombre: v.aerolinea_nombre || v.aerolinea,
+                aerolinea_codigo: v.aerolinea_codigo || v.aerolinea?.substring(0, 2)?.toUpperCase() || 'AV'
+            })),
+            airportTranslations
+        );
 
         // Compatibilidad con datos legacy + desglose de precios desde paquete_data
         const paqueteDataPrecios = cotizacion?.paquete_data || {};
@@ -1693,7 +1700,8 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
             vendedor_id: vendedor_id_body,
             paquete_id,           // Si viene de un paquete del catálogo
             tipo_cotizacion,      // 'manual' | 'paquete'
-            hotel_seleccionado_id, // ID del hotel seleccionado (si viene de paquete con hoteles)
+            hotel_seleccionado_id, // ID del hotel seleccionado (si viene de paquete con hoteles opcionales)
+            hoteles_incluidos,    // Hoteles fijos incluidos en el paquete
             tipo_habitacion,      // 'doble' | 'triple' | 'cuadruple'
             vuelos,
             hospedajes,
@@ -1975,23 +1983,29 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                     paquetePoliticas = paquete.politicas_cancelacion;
                 }
                 
-                // Buscar hotel seleccionado
+                // Buscar hotel seleccionado (solo entre opcionales)
                 const hoteles = paquete.hoteles || [];
-                if (hotel_seleccionado_id && hoteles.length > 0) {
-                    hotelSeleccionado = hoteles.find((h: any) => h.id === hotel_seleccionado_id);
+                const hotelesOpcionales = hoteles.filter((h: any) => h.incluido === false);
+                const hotelesIncluidos = hoteles.filter((h: any) => h.incluido !== false);
+                if (hotel_seleccionado_id && hotelesOpcionales.length > 0) {
+                    hotelSeleccionado = hotelesOpcionales.find((h: any) => h.id === hotel_seleccionado_id);
                 }
-                // Si no se especificó hotel pero hay hoteles, usar el primero
-                if (!hotelSeleccionado && hoteles.length > 0) {
+                // Fallback legacy: si solo hay hoteles sin flag, mantener comportamiento anterior
+                if (!hotelSeleccionado && hoteles.length > 0 && hotelesOpcionales.length === 0) {
                     hotelSeleccionado = hoteles[0];
                 }
                 
-                // Calcular precio según hotel y tipo de habitación (solo como fallback si el frontend no envió total)
+                // Calcular precio según hotel opcional y tipo de habitación (solo como fallback si el frontend no envió total)
                 if (hotelSeleccionado && (precios?.total === null || precios?.total === undefined)) {
                     const precioPorPersona = hotelSeleccionado.precios?.[habitacionTipo] 
                         || hotelSeleccionado.precios?.doble 
                         || paquete.precio_doble 
                         || paquete.precio_base 
                         || 0;
+                    precioCalculado = precioPorPersona * numViajeros;
+                } else if (hotelesIncluidos.length > 0 && (precios?.total === null || precios?.total === undefined)) {
+                    // Hoteles incluidos: usar precio base del paquete
+                    const precioPorPersona = paquete.precio_doble || paquete.precio_base || 0;
                     precioCalculado = precioPorPersona * numViajeros;
                 }
             }
@@ -2042,7 +2056,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
             precio_impuestos: precios?.impuestos ?? 0
         };
         
-        // Agregar hotel seleccionado al paquete_data
+        // Agregar hotel seleccionado (opcional) al paquete_data
         if (hotelSeleccionado) {
             paqueteDataJson.hotel_seleccionado = {
                 id: hotelSeleccionado.id,
@@ -2052,6 +2066,21 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                 tipo_habitacion: habitacionTipo,
                 precio_por_persona: hotelSeleccionado.precios?.[habitacionTipo] || hotelSeleccionado.precios?.doble || 0
             };
+        }
+
+        // Agregar hoteles incluidos del paquete (los que no son opcionales)
+        if (hoteles_incluidos && Array.isArray(hoteles_incluidos) && hoteles_incluidos.length > 0) {
+            paqueteDataJson.hoteles_incluidos = hoteles_incluidos;
+        } else if (paqueteData?.hoteles) {
+            const paqueteHotelesIncluidos = paqueteData.hoteles.filter((h: any) => h.incluido !== false);
+            if (paqueteHotelesIncluidos.length > 0) {
+                paqueteDataJson.hoteles_incluidos = paqueteHotelesIncluidos.map((h: any) => ({
+                    id: h.id,
+                    nombre: h.nombre,
+                    ciudad: h.ciudad,
+                    link: h.link
+                }));
+            }
         }
 
         const { data: cotizacion, error: cotizacionError } = await supabase
