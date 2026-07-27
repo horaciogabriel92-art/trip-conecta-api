@@ -1,7 +1,10 @@
 -- Solicitudes de demo guiada con asesor de Quotix
--- Se completan desde la landing pública y se notifican por email.
+-- Se completan desde el panel tras el primer login y se notifican por email.
 
-CREATE TABLE IF NOT EXISTS demo_requests (
+-- Recreamos la tabla para corregir el tipo de user_id (UUID, no INTEGER).
+DROP TABLE IF EXISTS demo_requests CASCADE;
+
+CREATE TABLE demo_requests (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   nombre TEXT NOT NULL,
   email TEXT NOT NULL,
@@ -11,7 +14,7 @@ CREATE TABLE IF NOT EXISTS demo_requests (
   hora_preferida TEXT NOT NULL,
   comentarios TEXT,
   tenant_id UUID REFERENCES tenants(id) ON DELETE SET NULL,
-  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
   estado TEXT NOT NULL DEFAULT 'pendiente',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
