@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { supabase } from '../config/supabase';
 import { z } from 'zod';
-import { sendEmailAsync } from '../services/email.service';
+import { sendEmailAsync, FROM_EMAIL } from '../services/email.service';
 import { getTenantId } from '../utils/tenant';
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -99,8 +99,10 @@ export const login = async (req: Request, res: Response) => {
         rol: user.rol,
         tenant_id: user.tenant_id,
         comision_porcentaje: user.comision_porcentaje,
+        telefono: user.telefono,
         preferencias: user.preferencias || {},
-        permisos: permissions
+        permisos: permissions,
+        fecha_registro: user.fecha_registro
       }
     });
   } catch (error) {
@@ -489,5 +491,85 @@ export const resetPassword = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Reset password error:', error);
     res.status(500).json({ error: 'Error interno del servidor' });
+  }
+};
+
+/**
+ * POST /api/auth/demo-request
+ * Solicitud de demo guiada desde el panel (usuario autenticado).
+ */
+export const requestDemo = async (req: Request, res: Response) => {
+  const tenantId = getTenantId(req);
+  const userId = (req as any).user?.userId;
+  const { fecha_preferida, hora_preferida, comentarios } = req.body;
+
+  if (!fecha_preferida || !hora_preferida) {
+    return res.status(400).json({ error: 'Fecha y hora preferida son requeridas' });
+  }
+
+  try {
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('id, nombre, apellido, email, telefono, tenant_id')
+      .eq('id', userId)
+      .single();
+
+    if (userError || !user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const { data: tenant, error: tenantError } = await supabase
+      .from('tenants')
+      .select('id, nombre')
+      .eq('id', tenantId)
+      .single();
+
+    if (tenantError || !tenant) {
+      return res.status(404).json({ error: 'Tenant no encontrado' });
+    }
+
+    const { data: solicitud, error } = await supabase
+      .from('demo_requests')
+      .insert({
+        nombre: `${user.nombre || ''} ${user.apellido || ''}`.trim(),
+        email: user.email,
+        telefono: user.telefono || null,
+        whatsapp: user.telefono || null,
+        fecha_preferida,
+        hora_preferida: hora_preferida.trim(),
+        comentarios: comentarios?.trim() || null,
+        tenant_id: tenantId,
+        user_id: userId,
+        estado: 'pendiente'
+      })
+      .select()
+      .single();
+
+    if (error || !solicitud) {
+      console.error('[auth] Error guardando demo request:', error);
+      return res.status(500).json({ error: 'Error al guardar la solicitud', details: error?.message });
+    }
+
+    sendEmailAsync({
+      to: process.env.SUPPORT_EMAIL || FROM_EMAIL,
+      subject: `Nueva solicitud de demo guiada - ${tenant.nombre}`,
+      templateName: 'solicitud-demo',
+      variables: {
+        subject: `Nueva solicitud de demo guiada - ${tenant.nombre}`,
+        nombre: `${user.nombre || ''} ${user.apellido || ''}`.trim(),
+        email: user.email,
+        telefono: user.telefono || 'No indicó',
+        whatsapp: user.telefono || 'No indicó',
+        fecha_preferida,
+        hora_preferida: hora_preferida.trim(),
+        comentarios: comentarios?.trim() || 'Sin comentarios'
+      },
+      metadata: { tipo: 'solicitud_demo_panel', demo_request_id: solicitud.id, tenant_id: tenantId, user_id: userId }
+    });
+
+    res.status(201).json({ message: 'Solicitud enviada correctamente', id: solicitud.id });
+  } catch (error: any) {
+    console.error('[auth] requestDemo error:', error);
+    res.status(500).json({ error: 'Internal server error', details: error.message });
   }
 };

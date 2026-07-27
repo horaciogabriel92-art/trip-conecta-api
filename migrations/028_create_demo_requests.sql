@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS demo_requests (
   fecha_preferida DATE NOT NULL,
   hora_preferida TEXT NOT NULL,
   comentarios TEXT,
+  tenant_id UUID REFERENCES tenants(id) ON DELETE SET NULL,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
   estado TEXT NOT NULL DEFAULT 'pendiente',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -17,6 +19,7 @@ CREATE TABLE IF NOT EXISTS demo_requests (
 
 CREATE INDEX IF NOT EXISTS idx_demo_requests_estado ON demo_requests(estado);
 CREATE INDEX IF NOT EXISTS idx_demo_requests_created_at ON demo_requests(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_demo_requests_tenant ON demo_requests(tenant_id);
 
 -- Trigger para mantener updated_at actualizado
 CREATE OR REPLACE FUNCTION update_demo_requests_updated_at()

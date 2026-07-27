@@ -11,6 +11,7 @@ router.post('/reset-password', apiLimiter, authController.resetPassword);
 router.post('/change-password', authenticateToken, authController.changePassword);
 router.get('/profile', authenticateToken, authController.getProfile);
 router.put('/profile', authenticateToken, authController.updateProfile);
+router.post('/demo-request', authenticateToken, authController.requestDemo);
 
 // Admin routes
 router.get('/users', authenticateToken, authorizeRole(['admin']), authController.getAllUsers);
