@@ -5,6 +5,7 @@ import {
   getPublicLanding,
   getPublicPaquete,
   postPublicCotizar,
+  postDemoRequest,
   getLandingConfig,
   updateLandingConfig
 } from '../controllers/public.controller';
@@ -16,6 +17,7 @@ router.get('/landings', getPublicLandings);
 router.get('/landing/:slug', getPublicLanding);
 router.get('/landing/:slug/paquetes/:id', getPublicPaquete);
 router.post('/landing/:slug/cotizar', postPublicCotizar);
+router.post('/demo-request', postDemoRequest);
 
 // Configuración de landing (admin autenticado)
 router.get('/config/landing', authenticateToken, getLandingConfig);

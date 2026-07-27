@@ -5,7 +5,7 @@ import { supabase } from '../config/supabase';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-const FROM_EMAIL = process.env.EMAIL_FROM || 'onboarding@resend.dev';
+export const FROM_EMAIL = process.env.EMAIL_FROM || 'onboarding@resend.dev';
 const FROM_NAME = process.env.EMAIL_FROM_NAME || 'Quotixos';
 
 interface EmailAttachment {

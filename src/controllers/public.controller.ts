@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { getTenantId } from '../utils/tenant';
 import { randomDigits } from '../utils/cryptoRandom';
-import { getAdminEmails, sendEmailAsync } from '../services/email.service';
+import { getAdminEmails, sendEmailAsync, FROM_EMAIL } from '../services/email.service';
 import { isFeatureEnabled, planAllows, getEffectivePlan } from '../utils/features';
 
 // ============================================
@@ -545,6 +545,73 @@ export const postPublicCotizar = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('[public] postPublicCotizar error:', error);
+    res.status(500).json({ error: 'Internal server error', details: error.message });
+  }
+};
+
+/**
+ * POST /api/public/demo-request
+ * Solicitud de demo guiada con asesor desde la landing pública.
+ */
+export const postDemoRequest = async (req: Request, res: Response) => {
+  const { nombre, email, telefono, whatsapp, fecha_preferida, hora_preferida, comentarios } = req.body;
+
+  if (!nombre || !email || !fecha_preferida || !hora_preferida) {
+    return res.status(400).json({ error: 'Nombre, email, fecha y hora preferida son requeridos' });
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({ error: 'El email no es válido' });
+  }
+
+  try {
+    const { data: solicitud, error } = await supabase
+      .from('demo_requests')
+      .insert({
+        nombre: nombre.trim(),
+        email: email.trim().toLowerCase(),
+        telefono: telefono?.trim() || null,
+        whatsapp: whatsapp?.trim() || null,
+        fecha_preferida,
+        hora_preferida: hora_preferida.trim(),
+        comentarios: comentarios?.trim() || null,
+        estado: 'pendiente'
+      })
+      .select()
+      .single();
+
+    if (error || !solicitud) {
+      console.error('[public] Error guardando demo request:', error);
+      return res.status(500).json({ error: 'Error al guardar la solicitud', details: error?.message });
+    }
+
+    const contactoWhatsapp = whatsapp?.trim() || telefono?.trim() || 'No indicó';
+    const adminEmail = process.env.SUPPORT_EMAIL || FROM_EMAIL;
+
+    sendEmailAsync({
+      to: adminEmail,
+      subject: 'Nueva solicitud de demo guiada - Quotix',
+      templateName: 'solicitud-demo',
+      variables: {
+        subject: 'Nueva solicitud de demo guiada - Quotix',
+        nombre: nombre.trim(),
+        email: email.trim().toLowerCase(),
+        telefono: telefono?.trim() || 'No indicó',
+        whatsapp: contactoWhatsapp,
+        fecha_preferida,
+        hora_preferida: hora_preferida.trim(),
+        comentarios: comentarios?.trim() || 'Sin comentarios'
+      },
+      metadata: { tipo: 'solicitud_demo', demo_request_id: solicitud.id }
+    });
+
+    res.status(201).json({
+      message: 'Solicitud enviada correctamente',
+      id: solicitud.id
+    });
+  } catch (error: any) {
+    console.error('[public] postDemoRequest error:', error);
     res.status(500).json({ error: 'Internal server error', details: error.message });
   }
 };
