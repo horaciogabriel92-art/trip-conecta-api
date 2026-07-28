@@ -79,7 +79,10 @@ import configRoutes from './routes/config.routes';
 import billingRoutes from './routes/billing.routes';
 import dashboardRoutes from './routes/dashboard.routes';
 import publicRoutes from './routes/public.routes';
+import appsumoRoutes from './routes/appsumo.routes';
 import { webhook as stripeWebhook } from './controllers/billing.controller';
+import { webhook as appsumoWebhook } from './controllers/appsumo.controller';
+
 app.use('/api/auth', express.json(), authRoutes);
 app.use('/api/register', registerLimiter, express.json(), registerRoutes);
 app.use('/api/admin', express.json(), adminRoutes);
@@ -101,6 +104,10 @@ app.use('/api/public', express.json(), publicRoutes);
 // Stripe webhook necesita body raw para validar firma
 app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), stripeWebhook);
 app.use('/api/billing', express.json(), billingRoutes);
+
+// AppSumo webhook necesita body raw para validar firma HMAC
+app.post('/api/appsumo/webhook', express.raw({ type: 'application/json' }), appsumoWebhook);
+app.use('/api/appsumo', express.json(), appsumoRoutes);
 
 // Health check con verificación de Supabase
 app.get('/api/health', async (req, res) => {
