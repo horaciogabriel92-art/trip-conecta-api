@@ -237,8 +237,13 @@ export const webhook = async (req: Request, res: Response) => {
 export const oauthRedirect = async (req: Request, res: Response) => {
   const code = req.query.code as string | undefined;
 
+  // AppSumo valida la URL con un ping antes de enviar usuarios reales.
+  // Respondemos 200 para que la validación pase, sin exponer detalles internos.
   if (!code) {
-    return res.status(400).json({ error: 'Código de autorización requerido' });
+    return res.status(200).json({
+      status: 'ok',
+      message: 'OAuth redirect URL is reachable. Initiate the flow from AppSumo.',
+    });
   }
 
   try {
