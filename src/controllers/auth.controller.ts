@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { supabase } from '../config/supabase';
 import { z } from 'zod';
-import { sendEmailAsync, FROM_EMAIL } from '../services/email.service';
+import { sendEmailAsync, sendInvitacionUsuario, FROM_EMAIL } from '../services/email.service';
 import { getTenantId } from '../utils/tenant';
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -206,6 +206,23 @@ export const createUser = async (req: Request, res: Response) => {
       }
       return res.status(400).json({ error: error.message });
     }
+
+    // Enviar email de invitación con credenciales (no bloqueante)
+    const { data: tenant } = await supabase
+      .from('tenants')
+      .select('nombre')
+      .eq('id', tenantId)
+      .single();
+
+    sendInvitacionUsuario(
+      email,
+      `${nombre} ${apellido}`,
+      tenant?.nombre || 'Tu agencia',
+      email,
+      assignedRol === 'admin' ? 'Administrador' : 'Vendedor',
+      process.env.PANEL_URL || 'https://panel.tripconecta.com',
+      password
+    );
 
     res.status(201).json({
       message: 'Usuario creado exitosamente',

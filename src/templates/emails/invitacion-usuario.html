@@ -1,11 +1,9 @@
-<h2>🎉 ¡Bienvenido a Quotix Travel, {{nombre}}!</h2>
-<p>Tu cuenta fue creada correctamente. Ya podés empezar a usar la plataforma.</p>
+<h2>🎉 ¡Hola {{nombre}}!</h2>
+<p>Te han invitado a unirte a <strong>{{nombreAgencia}}</strong> en Quotix Travel.</p>
 
 <div class="highlight">
   <p><strong>Agencia:</strong> {{nombreAgencia}}</p>
-  <p><strong>Plan contratado:</strong> {{planNombre}}</p>
-  <p><strong>Precio mensual:</strong> {{planPrecio}}</p>
-  <p><strong>Estado:</strong> Prueba gratuita de 7 días</p>
+  <p><strong>Rol asignado:</strong> {{rol}}</p>
 </div>
 
 <p><strong>Tu email de acceso:</strong> {{email}}</p>
@@ -14,7 +12,7 @@
 <p>Te recomendamos cambiarla desde el panel en tu primer ingreso.</p>
 {{/password}}
 {{^password}}
-<p>Usá la contraseña que ingresaste al registrarte. Si no la recordás, podés restablecerla desde el panel.</p>
+<p>Contactá al administrador de tu agencia para obtener la contraseña de acceso.</p>
 {{/password}}
 
 <p style="text-align: center;">

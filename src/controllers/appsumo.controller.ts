@@ -450,6 +450,7 @@ export const activate = async (req: Request, res: Response) => {
       return res.status(500).json({ error: 'Error al crear la agencia' });
     }
 
+    const plainPassword = password;
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const { data: user, error: userError } = await supabase
@@ -508,7 +509,8 @@ export const activate = async (req: Request, res: Response) => {
       email,
       plan.nombre,
       'Lifetime via AppSumo',
-      PANEL_URL
+      PANEL_URL,
+      plainPassword
     );
 
     return res.status(201).json({ token: tokenJwt, user, tenant });

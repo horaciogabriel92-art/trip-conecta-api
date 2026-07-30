@@ -96,6 +96,7 @@ export const register = async (req: Request, res: Response) => {
     }
 
     // Crear usuario admin
+    const plainPassword = password; // conservar para el email de bienvenida
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const { data: user, error: userError } = await supabase
@@ -147,7 +148,8 @@ export const register = async (req: Request, res: Response) => {
       email,
       plan.nombre,
       `US$ ${plan.precio_mensual_usd} / mes`,
-      panelUrl
+      panelUrl,
+      plainPassword
     );
 
     return res.status(201).json({

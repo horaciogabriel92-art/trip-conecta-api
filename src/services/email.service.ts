@@ -22,6 +22,25 @@ interface EmailPayload {
   attachments?: EmailAttachment[];
 }
 
+function renderConditionals(template: string, variables: Record<string, string | number>): string {
+  let result = template;
+
+  for (const key of Object.keys(variables)) {
+    const value = variables[key];
+    const isTruthy = value !== undefined && value !== null && String(value).trim() !== '';
+
+    // Bloque {{#key}}...{{/key}} se muestra solo si truthy
+    const openBlock = new RegExp(`{{#${key}}}([\\s\\S]*?){{/${key}}}`, 'g');
+    // Bloque {{^key}}...{{/key}} se muestra solo si falsy
+    const invertedBlock = new RegExp(`{{\\^${key}}}([\\s\\S]*?){{/${key}}}`, 'g');
+
+    result = result.replace(openBlock, isTruthy ? '$1' : '');
+    result = result.replace(invertedBlock, isTruthy ? '' : '$1');
+  }
+
+  return result;
+}
+
 async function renderTemplate(templateName: string, variables: Record<string, string | number>): Promise<string> {
   const templatesDir = path.join(__dirname, '../templates/emails');
   
@@ -30,7 +49,7 @@ async function renderTemplate(templateName: string, variables: Record<string, st
     fs.readFile(path.join(templatesDir, `${templateName}.html`), 'utf-8')
   ]);
 
-  let content = bodyHtml;
+  let content = renderConditionals(bodyHtml, variables);
   for (const [key, value] of Object.entries(variables)) {
     content = content.replace(new RegExp(`{{${key}}}`, 'g'), String(value));
   }
@@ -166,6 +185,31 @@ export async function sendBienvenidaRegistro(
       linkPanel
     },
     metadata: { tipo: 'bienvenida_registro' }
+  });
+}
+
+export async function sendInvitacionUsuario(
+  to: string,
+  nombre: string,
+  nombreAgencia: string,
+  email: string,
+  rol: string,
+  linkPanel: string,
+  password?: string
+) {
+  return sendEmailAsync({
+    to,
+    subject: `Te invitaron a unirte a ${nombreAgencia} en Quotix Travel`,
+    templateName: 'invitacion-usuario',
+    variables: {
+      nombre,
+      nombreAgencia,
+      email,
+      rol,
+      password: password || '',
+      linkPanel
+    },
+    metadata: { tipo: 'invitacion_usuario' }
   });
 }
 
