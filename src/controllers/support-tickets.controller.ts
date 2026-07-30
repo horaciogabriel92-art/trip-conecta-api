@@ -11,7 +11,7 @@ const attachmentSchema = z.object({
 const createTicketSchema = z.object({
   asunto: z.string().min(2).max(255),
   categoria: z.enum(['soporte_tecnico', 'facturacion', 'funcionalidad', 'error', 'otro']),
-  mensaje: z.string().min(10).max(5000),
+  mensaje: z.string().min(2).max(5000),
   adjunto_url: z.string().url().optional().nullable(),
   adjuntos: z.array(attachmentSchema).optional(),
   prioridad: z.enum(['baja', 'media', 'alta', 'urgente']).optional(),
