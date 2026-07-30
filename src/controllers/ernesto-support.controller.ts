@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { supabase } from '../config/supabase';
 import { sendEmailAsync } from '../services/email.service';
+import { deleteTicketAttachments } from './support-tickets.controller';
 
 const listQuerySchema = z.object({
   page: z.coerce.number().min(1).default(1),
@@ -111,7 +112,17 @@ export const getTicket = async (req: Request, res: Response) => {
       console.error('[Ernesto Support] Replies error:', repliesError);
     }
 
-    res.json({ ticket, replies: replies || [] });
+    const { data: adjuntos, error: adjuntosError } = await supabase
+      .from('support_ticket_attachments')
+      .select('id, file_name, file_url, content_type, created_at')
+      .eq('ticket_id', id)
+      .order('created_at', { ascending: true });
+
+    if (adjuntosError) {
+      console.error('[Ernesto Support] Attachments error:', adjuntosError);
+    }
+
+    res.json({ ticket, replies: replies || [], adjuntos: adjuntos || [] });
   } catch (error: any) {
     console.error('[Ernesto Support] Get error:', error);
     res.status(500).json({ error: 'Error interno del servidor' });
@@ -123,6 +134,8 @@ export const updateTicket = async (req: Request, res: Response) => {
     const { id } = req.params;
     const body = updateSchema.parse(req.body);
 
+    const { data: previous } = await supabase.from('support_tickets').select('estado').eq('id', id).single();
+
     const { data, error } = await supabase
       .from('support_tickets')
       .update(body)
@@ -133,6 +146,11 @@ export const updateTicket = async (req: Request, res: Response) => {
     if (error) {
       console.error('[Ernesto Support] Update error:', error);
       return res.status(500).json({ error: 'Error al actualizar ticket', details: error.message });
+    }
+
+    // Si se cierra el ticket, eliminar adjuntos
+    if (previous?.estado !== 'cerrado' && body.estado === 'cerrado') {
+      await deleteTicketAttachments(String(id));
     }
 
     res.json({ ticket: data });

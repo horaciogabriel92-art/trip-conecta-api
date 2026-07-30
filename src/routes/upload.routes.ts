@@ -135,6 +135,71 @@ router.delete('/paquete-imagen', authenticateToken, async (req, res) => {
 });
 
 // ============================================
+// ADJUNTOS DE SOPORTE (Supabase Storage)
+// ============================================
+
+const SUPPORT_BUCKET = 'support-attachments';
+
+async function ensureSupportBucket() {
+  try {
+    const { data: buckets } = await supabase.storage.listBuckets();
+    const exists = buckets?.some((b: any) => b.name === SUPPORT_BUCKET);
+    if (!exists) {
+      await supabase.storage.createBucket(SUPPORT_BUCKET, {
+        public: true,
+        fileSizeLimit: 5 * 1024 * 1024,
+        allowedMimeTypes: ['image/*'],
+      });
+    }
+  } catch (err) {
+    console.error('[Support Upload] Error ensuring bucket:', err);
+  }
+}
+
+// Subir adjunto de soporte (screenshots)
+router.post('/support-attachment', authenticateToken, upload.single('adjunto'), async (req, res) => {
+  const tenantId = getTenantId(req);
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No se proporcionó ningún archivo' });
+    }
+
+    await ensureSupportBucket();
+
+    const file = req.file;
+    const fileExt = file.originalname.split('.').pop();
+    const fileName = `${Date.now()}-${randomString(16)}.${fileExt}`;
+    const filePath = `tickets/${tenantId}/${fileName}`;
+
+    const { data, error } = await supabase.storage
+      .from(SUPPORT_BUCKET)
+      .upload(filePath, file.buffer, {
+        contentType: file.mimetype,
+        upsert: false,
+      });
+
+    if (error) {
+      console.error('[Support Upload] Error uploading:', error);
+      return res.status(500).json({ error: 'Error al subir adjunto', details: error.message });
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from(SUPPORT_BUCKET)
+      .getPublicUrl(filePath);
+
+    res.json({
+      url: publicUrl,
+      path: filePath,
+      file_name: file.originalname,
+      message: 'Adjunto subido exitosamente',
+    });
+  } catch (error: any) {
+    console.error('[Support Upload] Error:', error);
+    res.status(500).json({ error: 'Error interno del servidor', details: error.message });
+  }
+});
+
+// ============================================
 // COMPROBANTES DE PAGO (VPS Local Storage)
 // ============================================
 

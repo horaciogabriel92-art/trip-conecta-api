@@ -2,17 +2,26 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { supabase } from '../config/supabase';
 
+const attachmentSchema = z.object({
+  url: z.string().url(),
+  path: z.string().min(1),
+  file_name: z.string().min(1),
+});
+
 const createTicketSchema = z.object({
   asunto: z.string().min(2).max(255),
   categoria: z.enum(['soporte_tecnico', 'facturacion', 'funcionalidad', 'error', 'otro']),
   mensaje: z.string().min(10).max(5000),
   adjunto_url: z.string().url().optional().nullable(),
+  adjuntos: z.array(attachmentSchema).optional(),
   prioridad: z.enum(['baja', 'media', 'alta', 'urgente']).optional(),
 });
 
 const replySchema = z.object({
   mensaje: z.string().min(2).max(5000),
 });
+
+const SUPPORT_BUCKET = 'support-attachments';
 
 function ticketSelect() {
   return `
@@ -34,6 +43,31 @@ function ticketSelect() {
     created_at,
     updated_at
   `;
+}
+
+export async function deleteTicketAttachments(ticketId: string) {
+  try {
+    const { data: attachments } = await supabase
+      .from('support_ticket_attachments')
+      .select('id, storage_path')
+      .eq('ticket_id', ticketId);
+
+    const paths = (attachments || []).map((a: any) => a.storage_path).filter(Boolean);
+
+    if (paths.length > 0) {
+      const { error: storageError } = await supabase.storage.from(SUPPORT_BUCKET).remove(paths);
+      if (storageError) {
+        console.error('[Support Tickets] Error deleting attachments from storage:', storageError);
+      }
+    }
+
+    const { error } = await supabase.from('support_ticket_attachments').delete().eq('ticket_id', ticketId);
+    if (error) {
+      console.error('[Support Tickets] Error deleting attachment records:', error);
+    }
+  } catch (err) {
+    console.error('[Support Tickets] Error in deleteTicketAttachments:', err);
+  }
 }
 
 export const createTicket = async (req: Request, res: Response) => {
@@ -73,6 +107,20 @@ export const createTicket = async (req: Request, res: Response) => {
     if (error) {
       console.error('[Support Tickets] Create error:', error);
       return res.status(500).json({ error: 'Error al crear ticket', details: error.message });
+    }
+
+    if (body.adjuntos && body.adjuntos.length > 0 && data) {
+      const ticketId = (data as any).id;
+      const inserts = body.adjuntos.map((a) => ({
+        ticket_id: ticketId,
+        storage_path: a.path,
+        file_name: a.file_name,
+        file_url: a.url,
+      }));
+      const { error: attachError } = await supabase.from('support_ticket_attachments').insert(inserts);
+      if (attachError) {
+        console.error('[Support Tickets] Attachments insert error:', attachError);
+      }
     }
 
     res.status(201).json({ ticket: data });
@@ -134,7 +182,17 @@ export const getTicket = async (req: Request, res: Response) => {
       console.error('[Support Tickets] Replies error:', repliesError);
     }
 
-    res.json({ ticket, replies: replies || [] });
+    const { data: adjuntos, error: adjuntosError } = await supabase
+      .from('support_ticket_attachments')
+      .select('id, file_name, file_url, content_type, created_at')
+      .eq('ticket_id', id)
+      .order('created_at', { ascending: true });
+
+    if (adjuntosError) {
+      console.error('[Support Tickets] Attachments error:', adjuntosError);
+    }
+
+    res.json({ ticket, replies: replies || [], adjuntos: adjuntos || [] });
   } catch (error: any) {
     console.error('[Support Tickets] Get error:', error);
     res.status(500).json({ error: 'Error interno del servidor' });
