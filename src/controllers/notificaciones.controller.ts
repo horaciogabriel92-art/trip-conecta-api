@@ -16,7 +16,7 @@ export const getNotificaciones = async (req: Request, res: Response) => {
             .from('notificaciones')
             .select('*')
             .eq('tenant_id', tenantId)
-            .order('created_at', { ascending: false })
+            .order('fecha_creacion', { ascending: false })
             .limit(50);
         
         if (user.role === 'admin') {
@@ -155,7 +155,7 @@ export const crearNotificacion = async (req: Request, res: Response) => {
                 referencia_id: referencia_id || null,
                 referencia_tipo: referencia_tipo || null,
                 leida: false,
-                created_at: new Date().toISOString(),
+                fecha_creacion: new Date().toISOString(),
                 tenant_id: tenantId
             })
             .select()
