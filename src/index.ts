@@ -80,6 +80,9 @@ import billingRoutes from './routes/billing.routes';
 import dashboardRoutes from './routes/dashboard.routes';
 import publicRoutes from './routes/public.routes';
 import appsumoRoutes from './routes/appsumo.routes';
+import ernestosplaceRoutes from './routes/ernestosplace.routes';
+import supportRoutes from './routes/support.routes';
+import announcementsRoutes from './routes/announcements.routes';
 import { webhook as stripeWebhook } from './controllers/billing.controller';
 import { webhook as appsumoWebhook } from './controllers/appsumo.controller';
 
@@ -100,6 +103,9 @@ app.use('/api/reportes', reportesLimiter, express.json(), reportesRoutes);
 app.use('/api/config', express.json(), configRoutes);
 app.use('/api/dashboard', express.json(), dashboardRoutes);
 app.use('/api/public', express.json(), publicRoutes);
+app.use('/api/ernestosplace', express.json(), ernestosplaceRoutes);
+app.use('/api/support', express.json(), supportRoutes);
+app.use('/api/announcements', express.json(), announcementsRoutes);
 
 // Stripe webhook necesita body raw para validar firma
 app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), stripeWebhook);
