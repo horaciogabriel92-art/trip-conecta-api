@@ -2040,11 +2040,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                 if (hotel_seleccionado_id && hotelesOpcionales.length > 0) {
                     hotelSeleccionado = hotelesOpcionales.find((h: any) => h.id === hotel_seleccionado_id);
                 }
-                // Fallback legacy: si solo hay hoteles sin flag, mantener comportamiento anterior
-                if (!hotelSeleccionado && hoteles.length > 0 && hotelesOpcionales.length === 0) {
-                    hotelSeleccionado = hoteles[0];
-                }
-                
+
                 // Calcular precio según hotel opcional y tipo de habitación (solo como fallback si el frontend no envió total)
                 if (hotelSeleccionado && (precios?.total === null || precios?.total === undefined)) {
                     const precioPorPersona = hotelSeleccionado.precios?.[habitacionTipo] 
