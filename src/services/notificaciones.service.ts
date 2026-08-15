@@ -24,7 +24,8 @@ export async function crearNotificacionInterna(params: {
       mensaje: params.mensaje,
       referencia_id: params.referencia_id ?? null,
       referencia_tipo: params.referencia_tipo ?? null,
-      leida: false
+      leida: false,
+      created_at: new Date().toISOString()
     });
 
     if (error) {
