@@ -4,7 +4,7 @@ import { getTenantId } from '../utils/tenant';
 import { planAllows, getWorkflowMode } from '../utils/features';
 import { deleteDemoData, hasDemoData, seedDemoData } from '../services/demoData.service';
 
-const TRIP_CONECTA_TENANT_ID = '11111111-1111-1111-1111-111111111111';
+const DEFAULT_QUOTIX_TENANT_ID = '11111111-1111-1111-1111-111111111111';
 
 interface PlanFeatures {
   comisiones?: boolean;
@@ -129,26 +129,20 @@ export const getTenantConfig = async (req: Request, res: Response) => {
     const domain = (req.query.domain as string) || req.headers.host || '';
     const normalizedDomain = domain.replace(/^https?:\/\//, '').replace(/:\d+$/, '').toLowerCase();
 
-    // Dominios que siempre resuelven a Trip Conecta
-    const tripConectaDomains = ['panel.tripconecta.com', 'tripconecta.com', 'localhost'];
-    if (tripConectaDomains.includes(normalizedDomain) || normalizedDomain.startsWith('localhost')) {
+    // Dominios oficiales y desarrollo local
+    const quotixDomains = ['travel.quotixos.com', 'quotixos.com', 'panel.tripconecta.com', 'tripconecta.com'];
+    if (quotixDomains.includes(normalizedDomain) || normalizedDomain.startsWith('localhost')) {
       const { data: tenant, error } = await supabase
         .from('tenants')
         .select(TENANT_SELECT)
-        .eq('id', TRIP_CONECTA_TENANT_ID)
+        .eq('id', DEFAULT_QUOTIX_TENANT_ID)
         .single();
 
       if (error || !tenant) {
-        console.error('[config] Error fetching Trip Conecta tenant:', error);
         return res.json(QUOTIX_TRAVEL_CONFIG);
       }
 
       return res.json(formatTenantResponse(tenant));
-    }
-
-    // Portal genérico de Quotix Travel
-    if (normalizedDomain === 'travel.quotixos.com' || normalizedDomain === 'quotixos.com') {
-      return res.json(QUOTIX_TRAVEL_CONFIG);
     }
 
     // Buscar por dominio personalizado

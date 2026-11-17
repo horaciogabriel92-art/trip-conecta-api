@@ -220,7 +220,7 @@ export const createUser = async (req: Request, res: Response) => {
       tenant?.nombre || 'Tu agencia',
       email,
       assignedRol === 'admin' ? 'Administrador' : 'Vendedor',
-      process.env.PANEL_URL || 'https://panel.tripconecta.com',
+      process.env.PANEL_URL || 'https://travel.quotixos.com',
       password
     );
 
@@ -450,7 +450,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
       .eq('tenant_id', user.tenant_id)
       .eq('id', user.id);
 
-    const resetLink = `${process.env.PANEL_URL || 'https://panel.tripconecta.com'}/login/reset-password?token=${token}`;
+    const resetLink = `${process.env.PANEL_URL || 'https://travel.quotixos.com'}/login/reset-password?token=${token}`;
 
     await sendEmailAsync({
       to: user.email,

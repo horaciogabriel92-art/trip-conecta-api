@@ -17,7 +17,7 @@ const APPSUMO_API_KEY = process.env.APPSUMO_API_KEY;
 const APPSUMO_CLIENT_ID = process.env.APPSUMO_CLIENT_ID;
 const APPSUMO_CLIENT_SECRET = process.env.APPSUMO_CLIENT_SECRET;
 const APPSUMO_REDIRECT_URI = process.env.APPSUMO_REDIRECT_URI || 'https://api.tripconecta.com/api/appsumo/oauth';
-const PANEL_URL = process.env.PANEL_URL || 'https://panel.tripconecta.com';
+const PANEL_URL = process.env.PANEL_URL || 'https://travel.quotixos.com';
 
 const APPSUMO_TIER_TO_PLAN: Record<number, string> = {
   1: 'freelance',

@@ -532,7 +532,7 @@ export const postPublicCotizar = async (req: Request, res: Response) => {
           vendedorNombre: `${vendedor.nombre} ${vendedor.apellido}`,
           clienteNombre: `${nombre} ${apellido}`,
           montoTotal: String(cotizacion.precio_total || 0),
-          linkAdmin: `${process.env.PANEL_URL || 'https://panel.tripconecta.com'}/admin/cotizaciones/${cotizacion.id}`
+          linkAdmin: `${process.env.PANEL_URL || 'https://travel.quotixos.com'}/admin/cotizaciones/${cotizacion.id}`
         },
         metadata: { tipo: 'nueva_cotizacion_web', cotizacion_id: cotizacion.id }
       });

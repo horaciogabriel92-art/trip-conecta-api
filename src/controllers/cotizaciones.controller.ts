@@ -258,7 +258,7 @@ export const createCotizacion = async (req: Request, res: Response) => {
                     vendedorNombre: (req as any).user?.nombre || 'Vendedor',
                     clienteNombre: cliente_nombre || 'Cliente',
                     montoTotal: String(cotizacion.precio_total || 0),
-                    linkAdmin: `${process.env.PANEL_URL || 'https://panel.tripconecta.com'}/admin/cotizaciones/${cotizacion.id}`
+                    linkAdmin: `${process.env.PANEL_URL || 'https://travel.quotixos.com'}/admin/cotizaciones/${cotizacion.id}`
                 },
                 metadata: { tipo: 'nueva_cotizacion', cotizacion_id: cotizacion.id }
             });
@@ -1060,7 +1060,7 @@ export const convertirAVenta = async (req: Request, res: Response) => {
                     clienteNombre: clienteNombre || 'Cliente',
                     precioTotal: String(cotizacion.precio_total || 0),
                     comision: String(venta.comision_monto || 0),
-                    linkAdmin: `${process.env.PANEL_URL || 'https://panel.tripconecta.com'}/admin/cotizaciones/${id}`
+                    linkAdmin: `${process.env.PANEL_URL || 'https://travel.quotixos.com'}/admin/cotizaciones/${id}`
                 },
                 metadata: { tipo: 'nueva_venta', venta_id: venta.id, cotizacion_id: id }
             });
@@ -1084,7 +1084,7 @@ export const convertirAVenta = async (req: Request, res: Response) => {
                     clienteNombre: clienteNombre || 'Cliente',
                     precioTotal: String(cotizacion.precio_total || 0),
                     comision: String(venta.comision_monto || 0),
-                    linkVendedor: `${process.env.PANEL_URL || 'https://panel.tripconecta.com'}/mis-ventas`
+                    linkVendedor: `${process.env.PANEL_URL || 'https://travel.quotixos.com'}/mis-ventas`
                 },
                 metadata: { tipo: 'nueva_venta_vendedor', venta_id: venta.id, cotizacion_id: id }
             });
@@ -2417,7 +2417,7 @@ export const createCotizacionManual = async (req: Request, res: Response) => {
                     vendedorNombre: user.nombre || 'Vendedor',
                     clienteNombre: clienteData ? `${clienteData.nombre || ''} ${clienteData.apellido || ''}`.trim() : 'Cliente',
                     montoTotal: String(cotizacion.precio_total || 0),
-                    linkAdmin: `${process.env.PANEL_URL || 'https://panel.tripconecta.com'}/admin/cotizaciones/${cotizacion.id}`
+                    linkAdmin: `${process.env.PANEL_URL || 'https://travel.quotixos.com'}/admin/cotizaciones/${cotizacion.id}`
                 },
                 metadata: { tipo: 'nueva_cotizacion', cotizacion_id: cotizacion.id }
             });
@@ -2645,7 +2645,7 @@ export const enviarCotizacionPdf = async (req: Request, res: Response) => {
                 destino,
                 montoTotal,
                 vendedorNombre,
-                linkPanel: `${process.env.PANEL_URL || 'https://panel.tripconecta.com'}/cotizaciones/${cotizacionExistente.id}`
+                linkPanel: `${process.env.PANEL_URL || 'https://travel.quotixos.com'}/cotizaciones/${cotizacionExistente.id}`
             },
             pdfBuffer,
             pdfFilename,

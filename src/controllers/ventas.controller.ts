@@ -723,7 +723,7 @@ function renderConfirmacionHtml(venta: any, cotizacion: any): string {
                 </tr>
             </table>
             <p>Adjuntamos los vouchers/documentos correspondientes. Guardalos y presentalos en el momento del viaje.</p>
-            <p style="color: #6b7280; font-size: 12px;">Este email fue generado automáticamente desde Trip Conecta.</p>
+            <p style="color: #6b7280; font-size: 12px;">Este email fue generado automáticamente desde Quotix Travel.</p>
         </div>
     `;
 }

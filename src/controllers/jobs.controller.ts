@@ -65,7 +65,7 @@ export const sendPaymentReminders = async (req: Request, res: Response) => {
             fechaLimite: c.fecha_pago_resto
               ? new Date(c.fecha_pago_resto).toLocaleDateString('es-AR')
               : 'No especificada',
-            linkPanel: `${process.env.PANEL_URL || 'https://panel.tripconecta.com'}/cotizaciones/${c.id}`
+            linkPanel: `${process.env.PANEL_URL || 'https://travel.quotixos.com'}/cotizaciones/${c.id}`
           },
           metadata: { tipo: 'pago_pendiente_vendedor', cotizacion_id: c.id }
         });
@@ -160,7 +160,7 @@ export const sendCotizacionVencimientoReminders = async (req: Request, res: Resp
           String(diasRestantes),
           new Date(c.fecha_expiracion).toLocaleDateString('es-AR'),
           clienteNombre,
-          `${process.env.PANEL_URL || 'https://panel.tripconecta.com'}/cotizaciones/${c.id}`
+          `${process.env.PANEL_URL || 'https://travel.quotixos.com'}/cotizaciones/${c.id}`
         );
 
         await supabase.from('cotizaciones').update({ ultimo_recordatorio_enviado: hoyStr }).eq('tenant_id', tenantId).eq('id', c.id);
@@ -238,7 +238,7 @@ export const sendSeguimientoReminders = async (req: Request, res: Response) => {
           String(diasSinRespuesta),
           hoyStr,
           clienteNombre,
-          `${process.env.PANEL_URL || 'https://panel.tripconecta.com'}/cotizaciones/${c.id}`
+          `${process.env.PANEL_URL || 'https://travel.quotixos.com'}/cotizaciones/${c.id}`
         );
 
         await supabase.from('cotizaciones').update({ ultimo_recordatorio_enviado: hoyStr }).eq('tenant_id', tenantId).eq('id', c.id);

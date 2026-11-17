@@ -31,7 +31,7 @@ app.set('trust proxy', 1);
 // CORS configurado para múltiples dominios del panel
 const isDevelopment = process.env.NODE_ENV !== 'production';
 const allowedOrigins = [
-    'https://panel.tripconecta.com',
+    'https://travel.quotixos.com',
     'https://travel.quotixos.com',
     'https://quotixos.com',
     'https://www.quotixos.com'

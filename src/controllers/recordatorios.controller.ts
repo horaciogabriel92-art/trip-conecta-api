@@ -300,7 +300,7 @@ export const sendRecordatorioReminders = async (req: Request, res: Response) => 
                         descripcion: rec.descripcion || 'Sin descripción',
                         clienteNombre,
                         fechaRecordatorio: fechaFormateada,
-                        linkPanel: `${process.env.FRONTEND_URL || 'https://panel.tripconecta.com'}/dashboard`
+                        linkPanel: `${process.env.FRONTEND_URL || 'https://travel.quotixos.com'}/dashboard`
                     }
                 });
 

@@ -235,7 +235,7 @@ export async function sendCotizacionPdfEmail(
     variables: {
       ...variables,
       nombreAgencia: variables.nombreAgencia || FROM_NAME,
-      linkPanel: variables.linkPanel || 'https://panel.tripconecta.com'
+      linkPanel: variables.linkPanel || 'https://travel.quotixos.com'
     },
     attachments: [
       {
