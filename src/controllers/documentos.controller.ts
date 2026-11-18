@@ -173,21 +173,22 @@ export const downloadDocumento = async (req: Request, res: Response) => {
         // Construir rutas posibles - extraer solo el nombre del archivo
         // (por si en BD está guardada una ruta completa en lugar de solo el nombre)
         const filename = path.basename(documento.ruta_archivo);
-        const uploadDir = process.env.STORAGE_PATH || './storage/uploads';
+        const uploadDir = process.env.STORAGE_PATH || path.join(process.cwd(), 'storage/uploads');
         
         const possiblePaths = [
-            // Ruta correcta según volumen Docker (documentos subidos vía /documentos)
-            path.join('/app/storage/uploads', filename),
-            path.join('/data/trip-conecta/uploads', filename),
-            // Vouchers se guardan en subcarpeta vouchers/
-            path.join('/app/storage/uploads', 'vouchers', filename),
-            path.join('/data/trip-conecta/uploads', 'vouchers', filename),
+            // Ruta estándar de upload (Coolify Docker o local)
+            path.join(uploadDir, filename),
             path.join(uploadDir, 'vouchers', filename),
-            // Compatibilidad con archivos que puedan tener ruta completa guardada
-            filename, // Si es ruta absoluta
-            path.join(process.cwd(), filename),
+            path.join('/app/storage/uploads', filename),
+            path.join('/app/storage/uploads', 'vouchers', filename),
+            // Rutas de compatibilidad histórica
+            path.join('/data/quotix/uploads', filename),
+            path.join('/data/quotix/uploads', 'vouchers', filename),
+            path.join('/data/trip-conecta/uploads', filename),
+            path.join('/data/trip-conecta/uploads', 'vouchers', filename),
             path.join(process.cwd(), 'storage', 'uploads', filename),
             path.join(process.cwd(), 'storage', 'uploads', 'vouchers', filename),
+            filename,
         ];
         
         let foundPath = null;

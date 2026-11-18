@@ -152,7 +152,10 @@ router.post('/backup-comprobantes', authenticateToken, async (req, res) => {
 
         const uploadDir = process.env.STORAGE_PATH || '/app/storage/uploads';
         const comprobantesDir = path.join(uploadDir, 'comprobantes');
-        const backupDir = '/data/trip-conecta/backups';
+        const backupDir = process.env.BACKUP_PATH || path.join(uploadDir, 'backups');
+        if (!fs.existsSync(backupDir)) {
+            fs.mkdirSync(backupDir, { recursive: true });
+        }
         
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const backupFile = path.join(backupDir, `comprobantes-backup-${timestamp}.tar.gz`);
@@ -205,12 +208,12 @@ router.get('/debug-vouchers', authenticateToken, async (req, res) => {
         
         // Rutas a verificar
         const pathsToCheck = [
-            '/app/storage/uploads',
-            '/data/trip-conecta/uploads',
             uploadDir,
             path.join(uploadDir, 'vouchers'),
+            '/app/storage/uploads',
             path.join('/app/storage/uploads', 'vouchers'),
-            path.join('/data/trip-conecta/uploads', 'vouchers'),
+            '/data/quotix/uploads',
+            '/data/trip-conecta/uploads',
         ];
 
         const pathStatus = pathsToCheck.map(p => ({
@@ -238,11 +241,12 @@ router.get('/debug-vouchers', authenticateToken, async (req, res) => {
         const documentosCheck = (documentosBD || []).map(doc => {
             const filename = path.basename(doc.ruta_archivo);
             const possiblePaths = [
-                path.join('/app/storage/uploads', filename),
-                path.join('/data/trip-conecta/uploads', filename),
                 path.join(uploadDir, filename),
                 path.join(uploadDir, 'vouchers', filename),
+                path.join('/app/storage/uploads', filename),
                 path.join('/app/storage/uploads', 'vouchers', filename),
+                path.join('/data/quotix/uploads', filename),
+                path.join('/data/trip-conecta/uploads', filename),
                 filename,
             ];
 

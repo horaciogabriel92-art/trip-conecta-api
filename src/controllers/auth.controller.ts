@@ -105,7 +105,11 @@ export const login = async (req: Request, res: Response) => {
         fecha_registro: user.fecha_registro
       }
     });
-  } catch (error) {
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      const firstIssue = error.issues?.[0]?.message || 'Datos de inicio de sesión inválidos';
+      return res.status(400).json({ error: firstIssue });
+    }
     console.error('Login error:', error);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
@@ -464,7 +468,11 @@ export const forgotPassword = async (req: Request, res: Response) => {
     });
 
     res.json({ message: 'Si el email existe, recibirás instrucciones para restablecer tu contraseña.' });
-  } catch (error) {
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      const firstIssue = error.issues?.[0]?.message || 'Email inválido';
+      return res.status(400).json({ error: firstIssue });
+    }
     console.error('Forgot password error:', error);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
@@ -505,7 +513,11 @@ export const resetPassword = async (req: Request, res: Response) => {
       .eq('id', user.id);
 
     res.json({ message: 'Contraseña restablecida exitosamente' });
-  } catch (error) {
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      const firstIssue = error.issues?.[0]?.message || 'Datos inválidos';
+      return res.status(400).json({ error: firstIssue });
+    }
     console.error('Reset password error:', error);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
